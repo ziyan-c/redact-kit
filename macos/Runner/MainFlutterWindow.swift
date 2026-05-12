@@ -7,7 +7,7 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
-    self.minSize = NSSize(width: 980, height: 640)
+    self.minSize = NSSize(width: 1000, height: 640)
     self.title = "Redact Kit"
     setInitialWindowFrame()
 

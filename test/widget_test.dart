@@ -17,7 +17,77 @@ void main() {
 
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.byIcon(Icons.folder_open), findsWidgets);
-    expect(find.text('Open Image'), findsOneWidget);
+    expect(find.text('Open from Files'), findsOneWidget);
+  });
+
+  testWidgets('uses compact controls on phone width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    expect(find.text('Redact Kit'), findsOneWidget);
+    expect(find.text('macOS / iOS'), findsNothing);
+    expect(find.text('Open from Files'), findsOneWidget);
+    expect(find.text('Open from Photos'), findsOneWidget);
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.text('Photos'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(find.text('Clear'), findsOneWidget);
+    expect(find.text('Export'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.info_outline));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Privacy & Export'), findsOneWidget);
+    expect(find.text('Pixel-level redaction'), findsOneWidget);
+    expect(find.textContaining('100% opaque solid pixels'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Format'), findsOneWidget);
+    expect(find.text('PNG'), findsWidgets);
+    expect(find.text('JPEG'), findsOneWidget);
+    expect(find.text('Save to Files'), findsOneWidget);
+    expect(find.text('Save to Photos'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+  });
+
+  testWidgets('uses tablet controls on mid width', (WidgetTester tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(820, 1180);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    expect(find.text('Redact Kit'), findsOneWidget);
+    expect(find.text('macOS / iOS'), findsNothing);
+    expect(find.text('Open from Files'), findsOneWidget);
+    expect(find.text('Format'), findsNothing);
+    expect(find.byIcon(Icons.tune), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Format'), findsOneWidget);
+    expect(find.text('PNG'), findsWidgets);
+    expect(find.text('JPEG'), findsOneWidget);
+    expect(find.text('Save to Files'), findsOneWidget);
+    expect(find.text('Save to Photos'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
   });
 
   testWidgets('shows export format controls on desktop width', (
