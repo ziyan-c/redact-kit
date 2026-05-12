@@ -10,11 +10,34 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
     self.minSize = NSSize(width: 980, height: 640)
     self.title = "Redact Kit"
+    setInitialWindowFrame()
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerFileChannel(with: flutterViewController)
 
     super.awakeFromNib()
+
+    self.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+  }
+
+  private func setInitialWindowFrame() {
+    let preferredSize = NSSize(width: 1120, height: 760)
+    let targetSize = NSSize(
+      width: max(self.frame.width, preferredSize.width),
+      height: max(self.frame.height, preferredSize.height)
+    )
+
+    guard let screenFrame = self.screen?.visibleFrame ?? NSScreen.main?.visibleFrame else {
+      self.setContentSize(targetSize)
+      return
+    }
+
+    let origin = NSPoint(
+      x: screenFrame.midX - targetSize.width / 2,
+      y: screenFrame.midY - targetSize.height / 2
+    )
+    self.setFrame(NSRect(origin: origin, size: targetSize), display: true)
   }
 
   private func registerFileChannel(with flutterViewController: FlutterViewController) {
@@ -32,8 +55,8 @@ class MainFlutterWindow: NSWindow {
       switch call.method {
       case "openImage":
         self.openImage(result: result)
-      case "savePng":
-        self.savePng(call: call, result: result)
+      case "saveImage":
+        self.saveImage(call: call, result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -71,13 +94,20 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  private func savePng(call: FlutterMethodCall, result: FlutterResult) {
+  private func saveImage(call: FlutterMethodCall, result: FlutterResult) {
     guard
       let arguments = call.arguments as? [String: Any],
       let name = arguments["name"] as? String,
-      let bytes = arguments["bytes"] as? FlutterStandardTypedData
+      let bytes = arguments["bytes"] as? FlutterStandardTypedData,
+      let fileExtension = arguments["extension"] as? String
     else {
-      result(FlutterError(code: "bad_arguments", message: "Missing PNG export arguments.", details: nil))
+      result(FlutterError(code: "bad_arguments", message: "Missing image export arguments.", details: nil))
+      return
+    }
+
+    let normalizedExtension = fileExtension.lowercased() == "jpeg" ? "jpg" : fileExtension.lowercased()
+    guard ["png", "jpg"].contains(normalizedExtension) else {
+      result(FlutterError(code: "bad_format", message: "Unsupported image export format.", details: nil))
       return
     }
 
@@ -86,9 +116,9 @@ class MainFlutterWindow: NSWindow {
     panel.canCreateDirectories = true
 
     if #available(macOS 11.0, *) {
-      panel.allowedContentTypes = [UTType.png]
+      panel.allowedContentTypes = [normalizedExtension == "png" ? UTType.png : UTType.jpeg]
     } else {
-      panel.allowedFileTypes = ["png"]
+      panel.allowedFileTypes = [normalizedExtension]
     }
 
     guard panel.runModal() == .OK, let url = panel.url else {

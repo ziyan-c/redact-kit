@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../domain/export_format.dart';
+
 part 'file_channel_service.g.dart';
 
 class FileChannelService {
@@ -24,10 +26,15 @@ class FileChannelService {
     return bytes;
   }
 
-  Future<String?> savePng({required String name, required Uint8List bytes}) {
-    return _channel.invokeMethod<String>('savePng', <String, Object>{
+  Future<String?> saveImage({
+    required String name,
+    required Uint8List bytes,
+    required ExportFormat format,
+  }) {
+    return _channel.invokeMethod<String>('saveImage', <String, Object>{
       'name': name,
       'bytes': bytes,
+      'extension': format.extension,
     });
   }
 }

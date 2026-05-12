@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/redaction_controller.dart';
+import '../domain/export_format.dart';
+import '../domain/jpeg_quality_preset.dart';
 import '../domain/redaction_state.dart';
 import 'redaction_painter.dart';
 
@@ -32,7 +34,7 @@ class RedactWorkspace extends ConsumerWidget {
             onInvoke: (_) => controller.openImage(),
           ),
           ExportImageIntent: CallbackAction<ExportImageIntent>(
-            onInvoke: (_) => controller.exportPng(),
+            onInvoke: (_) => controller.exportImage(),
           ),
           UndoRedactionIntent: CallbackAction<UndoRedactionIntent>(
             onInvoke: (_) {
@@ -70,7 +72,7 @@ class RedactWorkspace extends ConsumerWidget {
                               onOpen: controller.openImage,
                               onUndo: controller.undo,
                               onClear: controller.clear,
-                              onExport: controller.exportPng,
+                              onExport: controller.exportImage,
                             ),
                             Expanded(child: _CanvasArea(state: state)),
                           ],
@@ -81,7 +83,12 @@ class RedactWorkspace extends ConsumerWidget {
                           image: state.image,
                           redactionCount: state.redactions.length,
                           selectedColor: state.redactionColor,
+                          exportFormat: state.exportFormat,
+                          jpegQualityPreset: state.jpegQualityPreset,
                           onColorChanged: controller.selectColor,
+                          onExportFormatChanged: controller.setExportFormat,
+                          onJpegQualityPresetChanged:
+                              controller.setJpegQualityPreset,
                         ),
                     ],
                   );
@@ -276,7 +283,7 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Tooltip(
-            message: 'Export clean PNG',
+            message: 'Export clean image',
             child: FilledButton.icon(
               onPressed: canExport ? onExport : null,
               icon: isExporting
@@ -302,13 +309,21 @@ class _SidePanel extends StatelessWidget {
     required this.image,
     required this.redactionCount,
     required this.selectedColor,
+    required this.exportFormat,
+    required this.jpegQualityPreset,
     required this.onColorChanged,
+    required this.onExportFormatChanged,
+    required this.onJpegQualityPresetChanged,
   });
 
   final ui.Image? image;
   final int redactionCount;
   final Color selectedColor;
+  final ExportFormat exportFormat;
+  final JpegQualityPreset jpegQualityPreset;
   final ValueChanged<Color> onColorChanged;
+  final ValueChanged<ExportFormat> onExportFormatChanged;
+  final ValueChanged<JpegQualityPreset> onJpegQualityPresetChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -360,14 +375,116 @@ class _SidePanel extends StatelessWidget {
           ),
           _MetricRow(label: 'Redactions', value: '$redactionCount'),
           const _MetricRow(label: 'Cover', value: '100% opaque'),
-          const _MetricRow(label: 'Export', value: 'Clean PNG'),
+          _MetricRow(label: 'Format', value: exportFormat.label),
+          const SizedBox(height: 22),
+          const Divider(height: 1),
+          const SizedBox(height: 22),
+          const _PanelHeading('Export'),
+          _ExportFormatPicker(
+            selected: exportFormat,
+            onChanged: onExportFormatChanged,
+          ),
+          if (exportFormat == ExportFormat.jpeg) ...<Widget>[
+            const SizedBox(height: 18),
+            _JpegQualityPresetPicker(
+              selected: jpegQualityPreset,
+              onChanged: onJpegQualityPresetChanged,
+            ),
+          ],
           const Spacer(),
-          const Text(
-            'Files stay local. Export writes a newly encoded PNG from visible pixels.',
-            style: TextStyle(color: Color(0xFF637066), height: 1.35),
+          Text(
+            exportFormat == ExportFormat.png
+                ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
+                : 'JPEG is lossy. Lower quality makes smaller files.',
+            style: const TextStyle(color: Color(0xFF637066), height: 1.35),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ExportFormatPicker extends StatelessWidget {
+  const _ExportFormatPicker({required this.selected, required this.onChanged});
+
+  final ExportFormat selected;
+  final ValueChanged<ExportFormat> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<ExportFormat>(
+        showSelectedIcon: false,
+        segments: ExportFormat.values
+            .map(
+              (format) => ButtonSegment<ExportFormat>(
+                value: format,
+                label: Text(format.label),
+              ),
+            )
+            .toList(growable: false),
+        selected: <ExportFormat>{selected},
+        onSelectionChanged: (formats) => onChanged(formats.single),
+      ),
+    );
+  }
+}
+
+class _JpegQualityPresetPicker extends StatelessWidget {
+  const _JpegQualityPresetPicker({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final JpegQualityPreset selected;
+  final ValueChanged<JpegQualityPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            const Expanded(
+              child: Text(
+                'JPEG quality',
+                style: TextStyle(
+                  color: Color(0xFF637066),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              selected.label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<JpegQualityPreset>(
+            showSelectedIcon: false,
+            segments: JpegQualityPreset.values
+                .map(
+                  (preset) => ButtonSegment<JpegQualityPreset>(
+                    value: preset,
+                    label: Text(preset.label),
+                  ),
+                )
+                .toList(growable: false),
+            selected: <JpegQualityPreset>{selected},
+            onSelectionChanged: (presets) => onChanged(presets.single),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          selected.description,
+          style: const TextStyle(color: Color(0xFF637066), height: 1.35),
+        ),
+      ],
     );
   }
 }

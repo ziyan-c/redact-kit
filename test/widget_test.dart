@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:redact_kit/app/redact_kit_app.dart';
+import 'package:redact_kit/features/redaction/data/jpeg_metadata.dart';
 import 'package:redact_kit/features/redaction/data/png_metadata.dart';
 import 'package:redact_kit/features/redaction/domain/redaction_region.dart';
 import 'package:redact_kit/features/redaction/presentation/redaction_painter.dart';
@@ -17,6 +18,33 @@ void main() {
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.byIcon(Icons.folder_open), findsWidgets);
     expect(find.text('Open Image'), findsOneWidget);
+  });
+
+  testWidgets('shows export format controls on desktop width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1120, 760);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    expect(find.text('Format'), findsOneWidget);
+    expect(find.text('PNG'), findsWidgets);
+    expect(find.text('JPEG'), findsOneWidget);
+    expect(find.text('JPEG quality'), findsNothing);
+
+    await tester.tap(find.text('JPEG'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('JPEG quality'), findsOneWidget);
+    expect(find.text('Low'), findsOneWidget);
+    expect(find.text('Medium'), findsWidgets);
+    expect(find.text('High'), findsWidgets);
+    expect(find.text('Larger file, cleaner image.'), findsOneWidget);
   });
 
   test('strips PNG ancillary metadata chunks', () {
@@ -41,6 +69,45 @@ void main() {
 
     expect(chunkTypes, <String>['IHDR', 'IDAT', 'IEND']);
     expect(String.fromCharCodes(stripped), isNot(contains('secret=home')));
+  });
+
+  test('strips JPEG app and comment metadata segments', () {
+    final jpeg = Uint8List.fromList(<int>[
+      0xff,
+      0xd8,
+      ..._jpegSegment(0xe0, 'JFIF secret density'.codeUnits),
+      ..._jpegSegment(0xe1, 'Exif GPS home'.codeUnits),
+      ..._jpegSegment(0xe2, 'ICC profile'.codeUnits),
+      ..._jpegSegment(0xed, 'Photoshop IPTC'.codeUnits),
+      ..._jpegSegment(0xef, 'vendor payload'.codeUnits),
+      ..._jpegSegment(0xfe, 'private comment'.codeUnits),
+      ..._jpegSegment(0xdb, <int>[1, 2, 3]),
+      ..._jpegSegment(0xc0, <int>[8, 0, 1, 0, 1, 1, 1, 0x11, 0]),
+      ..._jpegSegment(0xc4, <int>[0]),
+      ..._jpegSegment(0xda, <int>[1, 1, 0, 0, 0]),
+      0x11,
+      0xff,
+      0x00,
+      0x22,
+      0xff,
+      0xd9,
+    ]);
+
+    final stripped = stripJpegMetadataSegments(jpeg);
+    final markers = _jpegMarkers(stripped);
+
+    expect(markers, containsAll(<int>[0xd8, 0xdb, 0xc0, 0xc4, 0xda, 0xd9]));
+    expect(markers, isNot(contains(0xe0)));
+    expect(markers, isNot(contains(0xe1)));
+    expect(markers, isNot(contains(0xe2)));
+    expect(markers, isNot(contains(0xed)));
+    expect(markers, isNot(contains(0xef)));
+    expect(markers, isNot(contains(0xfe)));
+    expect(String.fromCharCodes(stripped), isNot(contains('GPS home')));
+    expect(
+      _containsSubsequence(stripped, <int>[0x11, 0xff, 0x00, 0x22]),
+      isTrue,
+    );
   });
 
   test(
@@ -109,6 +176,11 @@ List<int> _chunk(String type, List<int> data) {
   ];
 }
 
+List<int> _jpegSegment(int marker, List<int> data) {
+  final length = data.length + 2;
+  return <int>[0xff, marker, (length >> 8) & 0xff, length & 0xff, ...data];
+}
+
 List<String> _chunkTypes(Uint8List png) {
   final types = <String>[];
   var offset = 8;
@@ -126,4 +198,61 @@ List<String> _chunkTypes(Uint8List png) {
   }
 
   return types;
+}
+
+List<int> _jpegMarkers(Uint8List jpeg) {
+  final markers = <int>[];
+  var index = 0;
+
+  while (index + 1 < jpeg.length) {
+    if (jpeg[index] != 0xff) {
+      index += 1;
+      continue;
+    }
+
+    var markerOffset = index + 1;
+    while (markerOffset < jpeg.length && jpeg[markerOffset] == 0xff) {
+      markerOffset += 1;
+    }
+
+    if (markerOffset >= jpeg.length || jpeg[markerOffset] == 0x00) {
+      index = markerOffset + 1;
+      continue;
+    }
+
+    final marker = jpeg[markerOffset];
+    markers.add(marker);
+    index = markerOffset + 1;
+
+    if (marker == 0xd8 ||
+        marker == 0xd9 ||
+        marker == 0x01 ||
+        (marker >= 0xd0 && marker <= 0xd7)) {
+      if (marker == 0xd9) break;
+      continue;
+    }
+
+    if (index + 2 > jpeg.length) break;
+    final length = (jpeg[index] << 8) | jpeg[index + 1];
+    index += length;
+  }
+
+  return markers;
+}
+
+bool _containsSubsequence(List<int> source, List<int> needle) {
+  if (needle.isEmpty) return true;
+
+  for (var index = 0; index <= source.length - needle.length; index += 1) {
+    var matched = true;
+    for (var needleIndex = 0; needleIndex < needle.length; needleIndex += 1) {
+      if (source[index + needleIndex] != needle[needleIndex]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+
+  return false;
 }

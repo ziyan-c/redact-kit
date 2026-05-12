@@ -3,10 +3,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as image_lib;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../data/file_channel_service.dart';
+import '../data/jpeg_metadata.dart';
 import '../data/png_metadata.dart';
+import '../domain/export_format.dart';
+import '../domain/jpeg_quality_preset.dart';
 import '../domain/redaction_region.dart';
 import '../domain/redaction_state.dart';
 
@@ -70,29 +74,38 @@ class RedactionController extends _$RedactionController {
     }
   }
 
-  Future<void> exportPng() async {
+  Future<void> exportImage() async {
     final snapshot = state;
     final image = snapshot.image;
     if (image == null || snapshot.isExporting) return;
 
-    state = state.copyWith(isExporting: true, status: 'Encoding clean PNG');
+    state = state.copyWith(
+      isExporting: true,
+      status: 'Encoding clean ${snapshot.exportFormat.label}',
+    );
 
     try {
-      final pngBytes = await _renderCleanPng(
+      final bytes = await _renderCleanImage(
         image: image,
         redactions: snapshot.redactions,
+        format: snapshot.exportFormat,
+        jpegQualityPreset: snapshot.jpegQualityPreset,
       );
       if (!ref.mounted) return;
 
       final savedPath = await ref
           .read(fileChannelServiceProvider)
-          .savePng(name: 'redacted-clean.png', bytes: pngBytes);
+          .saveImage(
+            name: snapshot.exportFormat.defaultFileName,
+            bytes: bytes,
+            format: snapshot.exportFormat,
+          );
       if (!ref.mounted) return;
 
       state = state.copyWith(
         status: savedPath == null
             ? 'Export canceled'
-            : 'Exported clean PNG with ${snapshot.redactions.length} redaction${snapshot.redactions.length == 1 ? '' : 's'}',
+            : 'Exported clean ${snapshot.exportFormat.label} with ${snapshot.redactions.length} redaction${snapshot.redactions.length == 1 ? '' : 's'}',
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
@@ -107,9 +120,11 @@ class RedactionController extends _$RedactionController {
     }
   }
 
-  Future<Uint8List> _renderCleanPng({
+  Future<Uint8List> _renderCleanImage({
     required ui.Image image,
     required List<RedactionRegion> redactions,
+    required ExportFormat format,
+    required JpegQualityPreset jpegQualityPreset,
   }) async {
     ui.Picture? picture;
     ui.Image? redactedImage;
@@ -126,19 +141,30 @@ class RedactionController extends _$RedactionController {
       picture = recorder.endRecording();
       redactedImage = await picture.toImage(image.width, image.height);
       final byteData = await redactedImage.toByteData(
-        format: ui.ImageByteFormat.png,
+        format: ui.ImageByteFormat.rawStraightRgba,
       );
 
       if (byteData == null) {
-        throw StateError('PNG encoding failed.');
+        throw StateError('Pixel readback failed.');
       }
 
-      return stripPngMetadataChunks(
-        byteData.buffer.asUint8List(
-          byteData.offsetInBytes,
-          byteData.lengthInBytes,
-        ),
+      final raster = image_lib.Image.fromBytes(
+        width: image.width,
+        height: image.height,
+        bytes: byteData.buffer,
+        bytesOffset: byteData.offsetInBytes,
+        numChannels: 4,
+        order: image_lib.ChannelOrder.rgba,
       );
+
+      switch (format) {
+        case ExportFormat.png:
+          return stripPngMetadataChunks(image_lib.encodePng(raster));
+        case ExportFormat.jpeg:
+          return stripJpegMetadataSegments(
+            image_lib.encodeJpg(raster, quality: jpegQualityPreset.quality),
+          );
+      }
     } finally {
       picture?.dispose();
       redactedImage?.dispose();
@@ -157,6 +183,14 @@ class RedactionController extends _$RedactionController {
 
   void selectColor(Color color) {
     state = state.copyWith(redactionColor: color);
+  }
+
+  void setExportFormat(ExportFormat format) {
+    state = state.copyWith(exportFormat: format);
+  }
+
+  void setJpegQualityPreset(JpegQualityPreset preset) {
+    state = state.copyWith(jpegQualityPreset: preset);
   }
 
   void undo() {

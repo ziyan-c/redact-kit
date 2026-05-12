@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'export_format.dart';
+import 'jpeg_quality_preset.dart';
 import 'redaction_region.dart';
 
 part 'redaction_state.freezed.dart';
@@ -20,6 +22,8 @@ abstract class RedactionState with _$RedactionState {
     Color? draftColor,
     @Default(false) bool isOpening,
     @Default(false) bool isExporting,
+    @Default(ExportFormat.png) ExportFormat exportFormat,
+    @Default(JpegQualityPreset.high) JpegQualityPreset jpegQualityPreset,
     @Default(<RedactionRegion>[]) List<RedactionRegion> redactions,
   }) = _RedactionState;
 
