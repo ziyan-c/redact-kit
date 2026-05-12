@@ -59,7 +59,7 @@ class RedactWorkspace extends ConsumerWidget {
                     return _MobileLayout(state: state);
                   }
 
-                  if (constraints.maxWidth < 1000) {
+                  if (constraints.maxWidth < 1100) {
                     return _TabletLayout(state: state);
                   }
 
@@ -1174,61 +1174,65 @@ class _SidePanel extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const _PanelHeading('Tool'),
-          Row(
-            children: <Widget>[
-              _ColorSwatchButton(
-                color: const Color(0xFF050505),
-                selected: selectedColor == const Color(0xFF050505),
-                label: 'Black',
-                onTap: () => onColorChanged(const Color(0xFF050505)),
-              ),
-              const SizedBox(width: 10),
-              _ColorSwatchButton(
-                color: Colors.white,
-                selected: selectedColor == Colors.white,
-                label: 'White',
-                onTap: () => onColorChanged(Colors.white),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const _PanelHeading('Tool'),
+            Row(
+              children: <Widget>[
+                _ColorSwatchButton(
+                  color: const Color(0xFF050505),
+                  selected: selectedColor == const Color(0xFF050505),
+                  label: 'Black',
+                  onTap: () => onColorChanged(const Color(0xFF050505)),
+                ),
+                const SizedBox(width: 10),
+                _ColorSwatchButton(
+                  color: Colors.white,
+                  selected: selectedColor == Colors.white,
+                  label: 'White',
+                  onTap: () => onColorChanged(Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Divider(height: 1),
+            const SizedBox(height: 22),
+            const _PanelHeading('Image'),
+            _MetricRow(
+              label: 'Pixels',
+              value: image == null
+                  ? 'None'
+                  : '${image.width} x ${image.height}',
+            ),
+            _MetricRow(label: 'Redactions', value: '$redactionCount'),
+            const _MetricRow(label: 'Cover', value: '100% opaque'),
+            _MetricRow(label: 'Format', value: exportFormat.label),
+            const SizedBox(height: 22),
+            const Divider(height: 1),
+            const SizedBox(height: 22),
+            const _PanelHeading('Export'),
+            _ExportFormatPicker(
+              selected: exportFormat,
+              onChanged: onExportFormatChanged,
+            ),
+            if (exportFormat == ExportFormat.jpeg) ...<Widget>[
+              const SizedBox(height: 18),
+              _JpegQualityPresetPicker(
+                selected: jpegQualityPreset,
+                onChanged: onJpegQualityPresetChanged,
               ),
             ],
-          ),
-          const SizedBox(height: 24),
-          const Divider(height: 1),
-          const SizedBox(height: 22),
-          const _PanelHeading('Image'),
-          _MetricRow(
-            label: 'Pixels',
-            value: image == null ? 'None' : '${image.width} x ${image.height}',
-          ),
-          _MetricRow(label: 'Redactions', value: '$redactionCount'),
-          const _MetricRow(label: 'Cover', value: '100% opaque'),
-          _MetricRow(label: 'Format', value: exportFormat.label),
-          const SizedBox(height: 22),
-          const Divider(height: 1),
-          const SizedBox(height: 22),
-          const _PanelHeading('Export'),
-          _ExportFormatPicker(
-            selected: exportFormat,
-            onChanged: onExportFormatChanged,
-          ),
-          if (exportFormat == ExportFormat.jpeg) ...<Widget>[
-            const SizedBox(height: 18),
-            _JpegQualityPresetPicker(
-              selected: jpegQualityPreset,
-              onChanged: onJpegQualityPresetChanged,
+            const SizedBox(height: 24),
+            Text(
+              exportFormat == ExportFormat.png
+                  ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
+                  : 'JPEG is lossy. Lower quality makes smaller files.',
+              style: const TextStyle(color: Color(0xFF637066), height: 1.35),
             ),
           ],
-          const Spacer(),
-          Text(
-            exportFormat == ExportFormat.png
-                ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
-                : 'JPEG is lossy. Lower quality makes smaller files.',
-            style: const TextStyle(color: Color(0xFF637066), height: 1.35),
-          ),
-        ],
+        ),
       ),
     );
   }

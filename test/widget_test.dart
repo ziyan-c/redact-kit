@@ -117,6 +117,42 @@ void main() {
     expect(find.text('Larger file, cleaner image.'), findsOneWidget);
   });
 
+  testWidgets('uses tablet layout before desktop has enough width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 640);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    expect(find.text('Format'), findsNothing);
+    expect(find.byIcon(Icons.tune), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps desktop side panel usable near minimum size', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1100, 700);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    await tester.tap(find.text('JPEG'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('JPEG quality'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('strips PNG ancillary metadata chunks', () {
     final png = Uint8List.fromList(<int>[
       137,
