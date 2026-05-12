@@ -805,7 +805,7 @@ class _PrivacyDetailsContent extends StatelessWidget {
             icon: Icons.tune_outlined,
             title: 'Format choice',
             body:
-                'PNG is lossless and preserves exact solid-color redaction pixels. JPEG is smaller and lossy, so redaction edges can soften; cover extra margin around sensitive content.',
+                'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
           ),
         ],
       ),
@@ -891,23 +891,30 @@ class _CanvasArea extends ConsumerWidget {
               : null,
         ),
         child: Center(
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 10,
-            runSpacing: 10,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              FilledButton.icon(
-                onPressed: state.isOpening ? null : controller.openImage,
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Open from Files'),
+              SizedBox(
+                width: 220,
+                child: FilledButton.icon(
+                  onPressed: state.isOpening ? null : controller.openImage,
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Open from Files'),
+                ),
               ),
               if (showPhotoButton)
-                FilledButton.tonalIcon(
-                  onPressed: state.isOpening
-                      ? null
-                      : controller.openPhotoLibrary,
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Open from Photos'),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: SizedBox(
+                    width: 220,
+                    child: FilledButton.tonalIcon(
+                      onPressed: state.isOpening
+                          ? null
+                          : controller.openPhotoLibrary,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Open from Photos'),
+                    ),
+                  ),
                 ),
             ],
           ),
