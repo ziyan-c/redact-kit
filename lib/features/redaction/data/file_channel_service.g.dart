@@ -55,4 +55,4 @@ final class FileChannelServiceProvider
 }
 
 String _$fileChannelServiceHash() =>
-    r'63dfa8301e1468fcac44d2d848d5dadc1db361ad';
+    r'4889531b9b48cf2c905b094ae99f394e7de3c39a';

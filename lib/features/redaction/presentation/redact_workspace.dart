@@ -70,9 +70,12 @@ class RedactWorkspace extends ConsumerWidget {
                               isOpening: state.isOpening,
                               isExporting: state.isExporting,
                               onOpen: controller.openImage,
+                              onOpenPhotos: controller.openPhotoLibrary,
                               onUndo: controller.undo,
                               onClear: controller.clear,
                               onExport: controller.exportImage,
+                              onShare: controller.shareImage,
+                              onSaveToPhotos: controller.saveImageToPhotos,
                             ),
                             Expanded(child: _CanvasArea(state: state)),
                           ],
@@ -199,9 +202,12 @@ class _TopBar extends StatelessWidget {
     required this.isOpening,
     required this.isExporting,
     required this.onOpen,
+    required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
     required this.onExport,
+    required this.onShare,
+    required this.onSaveToPhotos,
   });
 
   final String status;
@@ -211,9 +217,12 @@ class _TopBar extends StatelessWidget {
   final bool isOpening;
   final bool isExporting;
   final VoidCallback onOpen;
+  final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
   final VoidCallback onExport;
+  final VoidCallback onShare;
+  final VoidCallback onSaveToPhotos;
 
   @override
   Widget build(BuildContext context) {
@@ -236,7 +245,7 @@ class _TopBar extends StatelessWidget {
               ),
               SizedBox(height: 4),
               Text(
-                'macOS',
+                'macOS / iOS',
                 style: TextStyle(
                   color: Color(0xFF637066),
                   fontWeight: FontWeight.w600,
@@ -254,7 +263,7 @@ class _TopBar extends StatelessWidget {
           ),
           Tooltip(
             message: 'Open image',
-            child: FilledButton.tonalIcon(
+            child: IconButton.filledTonal(
               onPressed: isOpening ? null : onOpen,
               icon: isOpening
                   ? const SizedBox.square(
@@ -262,7 +271,14 @@ class _TopBar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.folder_open),
-              label: const Text('Open'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Open from Photos',
+            child: IconButton.outlined(
+              onPressed: isOpening ? null : onOpenPhotos,
+              icon: const Icon(Icons.photo_library_outlined),
             ),
           ),
           const SizedBox(width: 8),
@@ -283,8 +299,8 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Tooltip(
-            message: 'Export clean image',
-            child: FilledButton.icon(
+            message: 'Save clean image',
+            child: IconButton.filled(
               onPressed: canExport ? onExport : null,
               icon: isExporting
                   ? const SizedBox.square(
@@ -295,7 +311,22 @@ class _TopBar extends StatelessWidget {
                       ),
                     )
                   : const Icon(Icons.save_alt),
-              label: const Text('Export'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Share clean image',
+            child: IconButton.filledTonal(
+              onPressed: canExport ? onShare : null,
+              icon: const Icon(Icons.ios_share),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Save clean image to Photos',
+            child: IconButton.filledTonal(
+              onPressed: canExport ? onSaveToPhotos : null,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
             ),
           ),
         ],

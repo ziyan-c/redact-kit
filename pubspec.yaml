@@ -1,5 +1,5 @@
 name: redact_kit
-description: "A local macOS image redaction app that rewrites pixels and strips metadata on export."
+description: "A local Flutter image redaction app that rewrites pixels and strips metadata on export."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -28,13 +28,18 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  file_selector: ^1.1.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.3.1
   freezed_annotation: ^3.1.0
+  gal: ^2.3.2
   go_router: ^17.2.3
   image: ^4.8.0
+  image_picker: ^1.2.2
+  path_provider: ^2.1.5
   riverpod_annotation: ^4.0.2
+  share_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:

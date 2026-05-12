@@ -26,6 +26,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save clean redacted images to Photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Open photos locally for redaction.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

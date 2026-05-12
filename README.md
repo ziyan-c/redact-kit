@@ -1,6 +1,6 @@
 # Redact Kit
 
-Redact Kit is a local-first macOS Flutter app for image redaction.
+Redact Kit is a local-first Flutter app for image redaction on macOS and iOS.
 
 ## Privacy model
 
@@ -9,12 +9,16 @@ Redact Kit is a local-first macOS Flutter app for image redaction.
 - PNG exports use lossless level-6 compression and strip ancillary chunks so EXIF/text/time/profile metadata is not copied.
 - JPEG exports are lossy, default to the High quality preset, and strip APP/comment metadata segments after encoding.
 - Export defaults to a generic filename instead of reusing the source image name.
-- Files are opened and saved through native macOS panels. There is no upload or server step.
+- File picking, sharing, and Photos export use Flutter plugins. There is no upload or server step.
 
 ## Run
 
 ```sh
 flutter run -d macos
+```
+
+```sh
+flutter run -d ios
 ```
 
 ## Development
@@ -24,6 +28,7 @@ This project uses a generated-code Flutter structure:
 - `go_router` for app routing
 - `flutter_riverpod` + `riverpod_generator` for state and dependency injection
 - `freezed` for immutable redaction state/models
+- `file_selector`, `image_picker`, `path_provider`, `share_plus`, and `gal` for platform file/photo workflows
 
 After changing annotated providers or Freezed models, regenerate code:
 
@@ -33,7 +38,7 @@ dart run build_runner build
 
 ## Use
 
-Open an image, drag across private regions, choose PNG or JPEG, then export the clean image.
+Open an image or pick from Photos, drag across private regions, choose PNG or JPEG, then save, share, or save to Photos.
 
 Keyboard shortcuts:
 

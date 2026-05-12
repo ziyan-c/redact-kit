@@ -42,7 +42,7 @@ final class RedactionControllerProvider
 }
 
 String _$redactionControllerHash() =>
-    r'456a59bc32dce17744ed1be38d67eb05cfb1ba97';
+    r'13baded334d87a3553f0b849c3bc811baf80e476';
 
 abstract class _$RedactionController extends $Notifier<RedactionState> {
   RedactionState build();

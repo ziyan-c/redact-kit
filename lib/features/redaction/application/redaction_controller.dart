@@ -31,12 +31,30 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> openImage() async {
+    await _openImageBytes(
+      status: 'Opening image',
+      loadBytes: () => ref.read(fileChannelServiceProvider).openImageBytes(),
+    );
+  }
+
+  Future<void> openPhotoLibrary() async {
+    await _openImageBytes(
+      status: 'Opening photo library',
+      loadBytes: () =>
+          ref.read(fileChannelServiceProvider).openPhotoLibraryBytes(),
+    );
+  }
+
+  Future<void> _openImageBytes({
+    required String status,
+    required Future<Uint8List?> Function() loadBytes,
+  }) async {
     if (state.isOpening) return;
 
-    state = state.copyWith(isOpening: true, status: 'Opening image');
+    state = state.copyWith(isOpening: true, status: status);
 
     try {
-      final bytes = await ref.read(fileChannelServiceProvider).openImageBytes();
+      final bytes = await loadBytes();
       if (!ref.mounted) return;
 
       if (bytes == null) {
@@ -75,14 +93,61 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> exportImage() async {
+    await _exportCleanImage(
+      progressStatus: 'Encoding clean ${state.exportFormat.label}',
+      canceledStatus: 'Export canceled',
+      successStatus: (snapshot) =>
+          'Exported clean ${snapshot.exportFormat.label} with ${snapshot.redactions.length} redaction${snapshot.redactions.length == 1 ? '' : 's'}',
+      action: (service, snapshot, name, bytes) => service.saveImage(
+        name: name,
+        bytes: bytes,
+        format: snapshot.exportFormat,
+      ),
+    );
+  }
+
+  Future<void> shareImage() async {
+    await _exportCleanImage(
+      progressStatus: 'Preparing clean ${state.exportFormat.label} to share',
+      canceledStatus: 'Share canceled',
+      successStatus: (snapshot) =>
+          'Shared clean ${snapshot.exportFormat.label}',
+      action: (service, snapshot, name, bytes) => service.shareImage(
+        name: name,
+        bytes: bytes,
+        format: snapshot.exportFormat,
+      ),
+    );
+  }
+
+  Future<void> saveImageToPhotos() async {
+    await _exportCleanImage(
+      progressStatus: 'Saving clean ${state.exportFormat.label} to Photos',
+      canceledStatus: 'Save canceled',
+      successStatus: (snapshot) =>
+          'Saved clean ${snapshot.exportFormat.label} to Photos',
+      action: (service, snapshot, name, bytes) =>
+          service.saveImageToPhotos(name: name, bytes: bytes),
+    );
+  }
+
+  Future<void> _exportCleanImage({
+    required String progressStatus,
+    required String canceledStatus,
+    required String Function(RedactionState snapshot) successStatus,
+    required Future<String?> Function(
+      FileChannelService service,
+      RedactionState snapshot,
+      String name,
+      Uint8List bytes,
+    )
+    action,
+  }) async {
     final snapshot = state;
     final image = snapshot.image;
     if (image == null || snapshot.isExporting) return;
 
-    state = state.copyWith(
-      isExporting: true,
-      status: 'Encoding clean ${snapshot.exportFormat.label}',
-    );
+    state = state.copyWith(isExporting: true, status: progressStatus);
 
     try {
       final bytes = await _renderCleanImage(
@@ -93,19 +158,16 @@ class RedactionController extends _$RedactionController {
       );
       if (!ref.mounted) return;
 
-      final savedPath = await ref
-          .read(fileChannelServiceProvider)
-          .saveImage(
-            name: snapshot.exportFormat.defaultFileName,
-            bytes: bytes,
-            format: snapshot.exportFormat,
-          );
+      final result = await action(
+        ref.read(fileChannelServiceProvider),
+        snapshot,
+        snapshot.exportFormat.defaultFileName,
+        bytes,
+      );
       if (!ref.mounted) return;
 
       state = state.copyWith(
-        status: savedPath == null
-            ? 'Export canceled'
-            : 'Exported clean ${snapshot.exportFormat.label} with ${snapshot.redactions.length} redaction${snapshot.redactions.length == 1 ? '' : 's'}',
+        status: result == null ? canceledStatus : successStatus(snapshot),
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
