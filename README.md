@@ -36,6 +36,12 @@ After changing annotated providers or Freezed models, regenerate code:
 dart run build_runner build
 ```
 
+## Local private config
+
+Optional signing settings can live in `.local/`, which is ignored by Git and may
+be a symlink to private storage. Copy templates from `.local.example/` and fill
+in personal values locally.
+
 ## Use
 
 Open an image or pick from Photos, drag across private regions, choose PNG or JPEG, then save, share, or save to Photos.

@@ -4,6 +4,15 @@
 *.pyc
 *.swp
 .DS_Store
+.env
+.env.*
+.local
+.local/
+*.cer
+*.p12
+*.p8
+*.mobileprovision
+ExportOptions.plist
 .atom/
 .build/
 .buildlog/

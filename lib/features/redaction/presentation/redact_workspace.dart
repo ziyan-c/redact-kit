@@ -136,6 +136,7 @@ class _MobileLayout extends ConsumerWidget {
             showBorder: false,
             fitPadding: 12,
             showPhotoButton: true,
+            enablePanZoom: true,
           ),
         ),
         _MobileBottomBar(
@@ -189,6 +190,7 @@ class _TabletLayout extends ConsumerWidget {
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             fitPadding: 16,
             showPhotoButton: true,
+            enablePanZoom: true,
           ),
         ),
       ],
@@ -868,6 +870,7 @@ class _CanvasArea extends ConsumerWidget {
     this.showBorder = true,
     this.fitPadding = 24,
     this.showPhotoButton = false,
+    this.enablePanZoom = false,
   });
 
   final RedactionState state;
@@ -875,6 +878,7 @@ class _CanvasArea extends ConsumerWidget {
   final bool showBorder;
   final double fitPadding;
   final bool showPhotoButton;
+  final bool enablePanZoom;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -933,29 +937,21 @@ class _CanvasArea extends ConsumerWidget {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
           final imageRect = _fitImageRect(image, size);
 
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanStart: (details) {
-              controller.beginRedaction(details.localPosition, imageRect);
-            },
-            onPanUpdate: (details) {
-              controller.updateRedaction(details.localPosition, imageRect);
-            },
-            onPanEnd: (_) => controller.finishRedaction(),
-            onPanCancel: controller.finishRedaction,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.precise,
-              child: CustomPaint(
-                painter: RedactionPainter(
-                  image: image,
-                  imageRect: imageRect,
-                  redactions: state.redactions,
-                  draftRect: state.draftRect,
-                  draftColor: state.draftColor,
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
+          if (enablePanZoom) {
+            return _ZoomableRedactionCanvas(
+              state: state,
+              image: image,
+              imageRect: imageRect,
+              canvasSize: size,
+              controller: controller,
+            );
+          }
+
+          return _PlainRedactionCanvas(
+            state: state,
+            image: image,
+            imageRect: imageRect,
+            controller: controller,
           );
         },
       ),
@@ -978,6 +974,214 @@ class _CanvasArea extends ConsumerWidget {
       (bounds.height - fitted.height) / 2,
       fitted.width,
       fitted.height,
+    );
+  }
+}
+
+class _PlainRedactionCanvas extends StatelessWidget {
+  const _PlainRedactionCanvas({
+    required this.state,
+    required this.image,
+    required this.imageRect,
+    required this.controller,
+  });
+
+  final RedactionState state;
+  final ui.Image image;
+  final Rect imageRect;
+  final RedactionController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (details) {
+        controller.beginRedaction(details.localPosition, imageRect);
+      },
+      onPanUpdate: (details) {
+        controller.updateRedaction(details.localPosition, imageRect);
+      },
+      onPanEnd: (_) => controller.finishRedaction(),
+      onPanCancel: controller.finishRedaction,
+      child: _RedactionPaintSurface(
+        state: state,
+        image: image,
+        imageRect: imageRect,
+      ),
+    );
+  }
+}
+
+enum _CanvasGestureMode { draw, zoom }
+
+class _ZoomableRedactionCanvas extends StatefulWidget {
+  const _ZoomableRedactionCanvas({
+    required this.state,
+    required this.image,
+    required this.imageRect,
+    required this.canvasSize,
+    required this.controller,
+  });
+
+  final RedactionState state;
+  final ui.Image image;
+  final Rect imageRect;
+  final Size canvasSize;
+  final RedactionController controller;
+
+  @override
+  State<_ZoomableRedactionCanvas> createState() =>
+      _ZoomableRedactionCanvasState();
+}
+
+class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
+  static const double _minScale = 1;
+  static const double _maxScale = 6;
+
+  double _scale = _minScale;
+  double _gestureStartScale = _minScale;
+  Offset _offset = Offset.zero;
+  Offset _gestureStartOffset = Offset.zero;
+  Offset _gestureStartFocalPoint = Offset.zero;
+  _CanvasGestureMode? _gestureMode;
+
+  @override
+  void didUpdateWidget(covariant _ZoomableRedactionCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.image != widget.image) {
+      _scale = _minScale;
+      _gestureStartScale = _minScale;
+      _offset = Offset.zero;
+      _gestureStartOffset = Offset.zero;
+      _gestureStartFocalPoint = Offset.zero;
+      _gestureMode = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveOffset = _clampOffset(_offset, _scale, widget.canvasSize);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onScaleStart: (details) {
+        _gestureStartScale = _scale;
+        _gestureStartOffset = effectiveOffset;
+        _gestureStartFocalPoint = details.localFocalPoint;
+
+        if (details.pointerCount >= 2) {
+          _gestureMode = _CanvasGestureMode.zoom;
+          widget.controller.finishRedaction();
+          return;
+        }
+
+        _gestureMode = _CanvasGestureMode.draw;
+        widget.controller.beginRedaction(
+          _toCanvasPoint(details.localFocalPoint, effectiveOffset),
+          widget.imageRect,
+        );
+      },
+      onScaleUpdate: (details) {
+        if (details.pointerCount >= 2) {
+          if (_gestureMode != _CanvasGestureMode.zoom) {
+            _gestureMode = _CanvasGestureMode.zoom;
+            widget.controller.finishRedaction();
+            _gestureStartScale = _scale;
+            _gestureStartOffset = effectiveOffset;
+            _gestureStartFocalPoint = details.localFocalPoint;
+          }
+
+          final nextScale = (_gestureStartScale * details.scale).clamp(
+            _minScale,
+            _maxScale,
+          );
+          final focalCanvasPoint =
+              (_gestureStartFocalPoint - _gestureStartOffset) /
+              _gestureStartScale;
+          final nextOffset =
+              details.localFocalPoint - focalCanvasPoint * nextScale;
+
+          setState(() {
+            _scale = nextScale;
+            _offset = _clampOffset(nextOffset, nextScale, widget.canvasSize);
+          });
+          return;
+        }
+
+        if (_gestureMode == _CanvasGestureMode.draw) {
+          widget.controller.updateRedaction(
+            _toCanvasPoint(details.localFocalPoint, effectiveOffset),
+            widget.imageRect,
+          );
+        }
+      },
+      onScaleEnd: (_) {
+        if (_gestureMode == _CanvasGestureMode.draw) {
+          widget.controller.finishRedaction();
+        }
+        _gestureMode = null;
+      },
+      child: ClipRect(
+        child: Transform.translate(
+          offset: effectiveOffset,
+          child: Transform.scale(
+            scale: _scale,
+            alignment: Alignment.topLeft,
+            child: SizedBox.fromSize(
+              size: widget.canvasSize,
+              child: _RedactionPaintSurface(
+                state: widget.state,
+                image: widget.image,
+                imageRect: widget.imageRect,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Offset _toCanvasPoint(Offset localPosition, Offset effectiveOffset) {
+    return (localPosition - effectiveOffset) / _scale;
+  }
+
+  Offset _clampOffset(Offset offset, double scale, Size bounds) {
+    if (scale <= _minScale) return Offset.zero;
+
+    final minDx = bounds.width - bounds.width * scale;
+    final minDy = bounds.height - bounds.height * scale;
+    return Offset(
+      offset.dx.clamp(minDx, 0.0).toDouble(),
+      offset.dy.clamp(minDy, 0.0).toDouble(),
+    );
+  }
+}
+
+class _RedactionPaintSurface extends StatelessWidget {
+  const _RedactionPaintSurface({
+    required this.state,
+    required this.image,
+    required this.imageRect,
+  });
+
+  final RedactionState state;
+  final ui.Image image;
+  final Rect imageRect;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.precise,
+      child: CustomPaint(
+        painter: RedactionPainter(
+          image: image,
+          imageRect: imageRect,
+          redactions: state.redactions,
+          draftRect: state.draftRect,
+          draftColor: state.draftColor,
+        ),
+        child: const SizedBox.expand(),
+      ),
     );
   }
 }

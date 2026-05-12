@@ -1,0 +1,5 @@
+// Public defaults used when .local/ios-signing.local.xcconfig is absent.
+
+APP_DEVELOPMENT_TEAM =
+APP_PRODUCT_BUNDLE_IDENTIFIER = app.redactkit.redactKit
+

@@ -1,0 +1,6 @@
+// Copy to .local/macos-signing.local.xcconfig and fill with your own values.
+// This file is a public template; keep real values out of Git.
+
+APP_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+APP_PRODUCT_BUNDLE_IDENTIFIER = com.example.redactkit
+

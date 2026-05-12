@@ -29,7 +29,11 @@ class FileChannelService {
       requestFullMetadata: false,
     );
 
-    return file?.readAsBytes();
+    if (file == null) return null;
+
+    final bytes = await file.readAsBytes();
+    await _deleteIfInsideAppCache(file.path);
+    return bytes;
   }
 
   Future<String?> saveImage({
@@ -68,19 +72,24 @@ class FileChannelService {
       bytes: bytes,
       format: format,
     );
-    final result = await share_plus.SharePlus.instance.share(
-      share_plus.ShareParams(
-        files: <share_plus.XFile>[file],
-        fileNameOverrides: <String>[name],
-        title: 'Share clean image',
-      ),
-    );
 
-    if (result.status == share_plus.ShareResultStatus.dismissed) {
-      return null;
+    try {
+      final result = await share_plus.SharePlus.instance.share(
+        share_plus.ShareParams(
+          files: <share_plus.XFile>[file],
+          fileNameOverrides: <String>[name],
+          title: 'Share clean image',
+        ),
+      );
+
+      if (result.status == share_plus.ShareResultStatus.dismissed) {
+        return null;
+      }
+
+      return file.path;
+    } finally {
+      await _deleteFileIfExists(file.path);
     }
-
-    return file.path;
   }
 
   Future<String> saveImageToPhotos({
@@ -134,6 +143,44 @@ file_selector.XTypeGroup _exportTypeGroup(ExportFormat format) {
     mimeTypes: <String>[format.mimeType],
     uniformTypeIdentifiers: <String>[format.uniformTypeIdentifier],
   );
+}
+
+Future<void> _deleteIfInsideAppCache(String path) async {
+  if (path.isEmpty) return;
+
+  final roots = <Directory>[];
+  try {
+    roots.add(await getTemporaryDirectory());
+  } catch (_) {
+    // Ignore cleanup failures; the OS can still clear temporary files later.
+  }
+  try {
+    roots.add(await getApplicationCacheDirectory());
+  } catch (_) {
+    // Not every platform exposes a separate app cache directory.
+  }
+
+  final file = File(path).absolute;
+  final filePath = file.path;
+  for (final root in roots) {
+    final rootPath = root.absolute.path;
+    if (filePath == rootPath || filePath.startsWith('$rootPath/')) {
+      await _deleteFileIfExists(filePath);
+      return;
+    }
+  }
+}
+
+Future<void> _deleteFileIfExists(String path) async {
+  try {
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  } catch (_) {
+    // Cleanup is best-effort and should not turn a successful user action into
+    // an error.
+  }
 }
 
 bool get _supportsSaveLocation {
