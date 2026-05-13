@@ -11,11 +11,20 @@ import '../domain/jpeg_quality_preset.dart';
 import '../domain/redaction_state.dart';
 import 'redaction_painter.dart';
 
-class RedactWorkspace extends ConsumerWidget {
+enum _WorkspaceMode { redact, metadata }
+
+class RedactWorkspace extends ConsumerStatefulWidget {
   const RedactWorkspace({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RedactWorkspace> createState() => _RedactWorkspaceState();
+}
+
+class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
+  _WorkspaceMode _mode = _WorkspaceMode.redact;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(redactionControllerProvider);
     final controller = ref.read(redactionControllerProvider.notifier);
 
@@ -56,49 +65,68 @@ class RedactWorkspace extends ConsumerWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 600) {
-                    return _MobileLayout(state: state);
+                    return _MobileLayout(
+                      state: state,
+                      mode: _mode,
+                      onModeChanged: _setMode,
+                    );
                   }
 
                   if (constraints.maxWidth < 1100) {
-                    return _TabletLayout(state: state);
+                    return _TabletLayout(
+                      state: state,
+                      mode: _mode,
+                      onModeChanged: _setMode,
+                    );
                   }
 
-                  return Row(
+                  return Column(
                     children: <Widget>[
-                      Expanded(
-                        child: Column(
-                          children: <Widget>[
-                            _TopBar(
-                              status: state.status,
-                              canUndo: state.hasRedactions,
-                              canClear: state.hasRedactions,
-                              canExport: state.hasImage && !state.isExporting,
-                              isOpening: state.isOpening,
-                              isExporting: state.isExporting,
-                              onOpen: controller.openImage,
-                              onOpenPhotos: controller.openPhotoLibrary,
-                              onUndo: controller.undo,
-                              onClear: controller.clear,
-                              onExport: controller.exportImage,
-                              onShare: controller.shareImage,
-                              onSaveToPhotos: controller.saveImageToPhotos,
-                              onPrivacyDetails: () =>
-                                  _showPrivacyDetails(context),
-                            ),
-                            Expanded(child: _CanvasArea(state: state)),
-                          ],
-                        ),
+                      _TopBar(
+                        mode: _mode,
+                        onModeChanged: _setMode,
+                        status: state.status,
+                        canUndo: state.hasRedactions,
+                        canClear: state.hasRedactions,
+                        canExport: state.hasImage && !state.isExporting,
+                        isOpening: state.isOpening,
+                        isExporting: state.isExporting,
+                        onOpen: controller.openImage,
+                        onOpenPhotos: controller.openPhotoLibrary,
+                        onUndo: controller.undo,
+                        onClear: controller.clear,
+                        onExport: controller.exportImage,
+                        onShare: controller.shareImage,
+                        onSaveToPhotos: controller.saveImageToPhotos,
+                        onHelp: () => _mode == _WorkspaceMode.redact
+                            ? _showRedactDetails(context)
+                            : _showMetadataDetails(context),
                       ),
-                      _SidePanel(
-                        image: state.image,
-                        redactionCount: state.redactions.length,
-                        selectedColor: state.redactionColor,
-                        exportFormat: state.exportFormat,
-                        jpegQualityPreset: state.jpegQualityPreset,
-                        onColorChanged: controller.selectColor,
-                        onExportFormatChanged: controller.setExportFormat,
-                        onJpegQualityPresetChanged:
-                            controller.setJpegQualityPreset,
+                      Expanded(
+                        child: _mode == _WorkspaceMode.redact
+                            ? Row(
+                                children: <Widget>[
+                                  Expanded(child: _CanvasArea(state: state)),
+                                  _SidePanel(
+                                    image: state.image,
+                                    redactionCount: state.redactions.length,
+                                    selectedColor: state.redactionColor,
+                                    exportFormat: state.exportFormat,
+                                    jpegQualityPreset: state.jpegQualityPreset,
+                                    preserveRedactionExportFileName:
+                                        state.preserveRedactionExportFileName,
+                                    onColorChanged: controller.selectColor,
+                                    onExportFormatChanged:
+                                        controller.setExportFormat,
+                                    onJpegQualityPresetChanged:
+                                        controller.setJpegQualityPreset,
+                                    onPreserveRedactionExportFileNameChanged:
+                                        controller
+                                            .setPreserveRedactionExportFileName,
+                                  ),
+                                ],
+                              )
+                            : _MetadataCleanerView(state: state, desktop: true),
                       ),
                     ],
                   );
@@ -110,12 +138,25 @@ class RedactWorkspace extends ConsumerWidget {
       ),
     );
   }
+
+  void _setMode(_WorkspaceMode mode) {
+    if (mode == _mode) return;
+    setState(() {
+      _mode = mode;
+    });
+  }
 }
 
 class _MobileLayout extends ConsumerWidget {
-  const _MobileLayout({required this.state});
+  const _MobileLayout({
+    required this.state,
+    required this.mode,
+    required this.onModeChanged,
+  });
 
   final RedactionState state;
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -126,39 +167,53 @@ class _MobileLayout extends ConsumerWidget {
       children: <Widget>[
         _MobileTopBar(
           status: state.status,
-          onPrivacyDetails: () => _showPrivacyDetails(context),
-          onSettings: () => _showExportSheet(context),
+          onHelp: () => mode == _WorkspaceMode.redact
+              ? _showRedactDetails(context)
+              : _showMetadataDetails(context),
+          onSettings: mode == _WorkspaceMode.redact
+              ? () => _showExportSheet(context)
+              : null,
         ),
+        _ModeSwitcherBand(mode: mode, onModeChanged: onModeChanged),
         Expanded(
-          child: _CanvasArea(
-            state: state,
-            margin: EdgeInsets.zero,
-            showBorder: false,
-            fitPadding: 12,
-            showPhotoButton: true,
-            enablePanZoom: true,
+          child: mode == _WorkspaceMode.redact
+              ? _CanvasArea(
+                  state: state,
+                  margin: EdgeInsets.zero,
+                  showBorder: false,
+                  fitPadding: 12,
+                  showPhotoButton: true,
+                  enablePanZoom: true,
+                )
+              : _MetadataCleanerView(state: state, desktop: false),
+        ),
+        if (mode == _WorkspaceMode.redact)
+          _MobileBottomBar(
+            canUndo: state.hasRedactions,
+            canClear: state.hasRedactions,
+            isOpening: state.isOpening,
+            canExport: canExport,
+            onOpen: controller.openImage,
+            onOpenPhotos: controller.openPhotoLibrary,
+            onUndo: controller.undo,
+            onClear: controller.clear,
+            onExportOptions: () => _showExportSheet(context),
           ),
-        ),
-        _MobileBottomBar(
-          canUndo: state.hasRedactions,
-          canClear: state.hasRedactions,
-          isOpening: state.isOpening,
-          canExport: canExport,
-          onOpen: controller.openImage,
-          onOpenPhotos: controller.openPhotoLibrary,
-          onUndo: controller.undo,
-          onClear: controller.clear,
-          onExportOptions: () => _showExportSheet(context),
-        ),
       ],
     );
   }
 }
 
 class _TabletLayout extends ConsumerWidget {
-  const _TabletLayout({required this.state});
+  const _TabletLayout({
+    required this.state,
+    required this.mode,
+    required this.onModeChanged,
+  });
 
   final RedactionState state;
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -168,6 +223,8 @@ class _TabletLayout extends ConsumerWidget {
     return Column(
       children: <Widget>[
         _TabletTopBar(
+          mode: mode,
+          onModeChanged: onModeChanged,
           status: state.status,
           canUndo: state.hasRedactions,
           canClear: state.hasRedactions,
@@ -181,17 +238,23 @@ class _TabletLayout extends ConsumerWidget {
           onExport: controller.exportImage,
           onSaveToPhotos: controller.saveImageToPhotos,
           onShare: controller.shareImage,
-          onPrivacyDetails: () => _showPrivacyDetails(context),
-          onSettings: () => _showExportSheet(context),
+          onHelp: () => mode == _WorkspaceMode.redact
+              ? _showRedactDetails(context)
+              : _showMetadataDetails(context),
+          onSettings: mode == _WorkspaceMode.redact
+              ? () => _showExportSheet(context)
+              : null,
         ),
         Expanded(
-          child: _CanvasArea(
-            state: state,
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            fitPadding: 16,
-            showPhotoButton: true,
-            enablePanZoom: true,
-          ),
+          child: mode == _WorkspaceMode.redact
+              ? _CanvasArea(
+                  state: state,
+                  margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  fitPadding: 16,
+                  showPhotoButton: true,
+                  enablePanZoom: true,
+                )
+              : _MetadataCleanerView(state: state, desktop: false),
         ),
       ],
     );
@@ -200,6 +263,8 @@ class _TabletLayout extends ConsumerWidget {
 
 class _TabletTopBar extends StatelessWidget {
   const _TabletTopBar({
+    required this.mode,
+    required this.onModeChanged,
     required this.status,
     required this.canUndo,
     required this.canClear,
@@ -213,10 +278,12 @@ class _TabletTopBar extends StatelessWidget {
     required this.onExport,
     required this.onSaveToPhotos,
     required this.onShare,
-    required this.onPrivacyDetails,
+    required this.onHelp,
     required this.onSettings,
   });
 
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
   final String status;
   final bool canUndo;
   final bool canClear;
@@ -230,8 +297,8 @@ class _TabletTopBar extends StatelessWidget {
   final VoidCallback onExport;
   final VoidCallback onSaveToPhotos;
   final VoidCallback onShare;
-  final VoidCallback onPrivacyDetails;
-  final VoidCallback onSettings;
+  final VoidCallback onHelp;
+  final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -266,68 +333,77 @@ class _TabletTopBar extends StatelessWidget {
               ],
             ),
           ),
-          _TopBarIconButton(
-            tooltip: 'Open from Files',
-            onPressed: isOpening ? null : onOpen,
-            icon: isOpening
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.folder_open),
-            tonal: true,
+          SizedBox(
+            width: 260,
+            child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
           ),
+          if (mode == _WorkspaceMode.redact) ...<Widget>[
+            _TopBarIconButton(
+              tooltip: 'Open from Files',
+              onPressed: isOpening ? null : onOpen,
+              icon: isOpening
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.folder_open),
+              tonal: true,
+            ),
+            _TopBarIconButton(
+              tooltip: 'Open from Photos',
+              onPressed: isOpening ? null : onOpenPhotos,
+              icon: const Icon(Icons.photo_library_outlined),
+            ),
+            _TopBarIconButton(
+              tooltip: 'Undo',
+              onPressed: canUndo ? onUndo : null,
+              icon: const Icon(Icons.undo),
+            ),
+            _TopBarIconButton(
+              tooltip: 'Clear',
+              onPressed: canClear ? onClear : null,
+              icon: const Icon(Icons.delete_outline),
+            ),
+            _TopBarIconButton(
+              tooltip: 'Save to Files',
+              onPressed: canExport ? onExport : null,
+              icon: isExporting
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save_alt),
+              filled: true,
+            ),
+            _TopBarIconButton(
+              tooltip: 'Save to Photos',
+              onPressed: canExport ? onSaveToPhotos : null,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              tonal: true,
+            ),
+            _TopBarIconButton(
+              tooltip: 'Share',
+              onPressed: canExport ? onShare : null,
+              icon: const Icon(Icons.ios_share),
+              tonal: true,
+            ),
+          ],
           _TopBarIconButton(
-            tooltip: 'Open from Photos',
-            onPressed: isOpening ? null : onOpenPhotos,
-            icon: const Icon(Icons.photo_library_outlined),
-          ),
-          _TopBarIconButton(
-            tooltip: 'Undo',
-            onPressed: canUndo ? onUndo : null,
-            icon: const Icon(Icons.undo),
-          ),
-          _TopBarIconButton(
-            tooltip: 'Clear',
-            onPressed: canClear ? onClear : null,
-            icon: const Icon(Icons.delete_outline),
-          ),
-          _TopBarIconButton(
-            tooltip: 'Save to Files',
-            onPressed: canExport ? onExport : null,
-            icon: isExporting
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.save_alt),
-            filled: true,
-          ),
-          _TopBarIconButton(
-            tooltip: 'Save to Photos',
-            onPressed: canExport ? onSaveToPhotos : null,
-            icon: const Icon(Icons.add_photo_alternate_outlined),
-            tonal: true,
-          ),
-          _TopBarIconButton(
-            tooltip: 'Share',
-            onPressed: canExport ? onShare : null,
-            icon: const Icon(Icons.ios_share),
-            tonal: true,
-          ),
-          _TopBarIconButton(
-            tooltip: 'Privacy details',
-            onPressed: onPrivacyDetails,
+            tooltip: mode == _WorkspaceMode.redact
+                ? 'Redact details'
+                : 'Metadata details',
+            onPressed: onHelp,
             icon: const Icon(Icons.info_outline),
           ),
-          _TopBarIconButton(
-            tooltip: 'Settings',
-            onPressed: onSettings,
-            icon: const Icon(Icons.tune),
-          ),
+          if (onSettings != null)
+            _TopBarIconButton(
+              tooltip: 'Settings',
+              onPressed: onSettings,
+              icon: const Icon(Icons.tune),
+            ),
         ],
       ),
     );
@@ -367,16 +443,67 @@ class _TopBarIconButton extends StatelessWidget {
   }
 }
 
+class _ModeSwitcherBand extends StatelessWidget {
+  const _ModeSwitcherBand({required this.mode, required this.onModeChanged});
+
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
+      ),
+      child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
+    );
+  }
+}
+
+class _ModeSwitcher extends StatelessWidget {
+  const _ModeSwitcher({required this.mode, required this.onModeChanged});
+
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<_WorkspaceMode>(
+        showSelectedIcon: false,
+        segments: const <ButtonSegment<_WorkspaceMode>>[
+          ButtonSegment<_WorkspaceMode>(
+            value: _WorkspaceMode.redact,
+            icon: Icon(Icons.crop_square),
+            label: Text('Redact'),
+          ),
+          ButtonSegment<_WorkspaceMode>(
+            value: _WorkspaceMode.metadata,
+            icon: Icon(Icons.cleaning_services_outlined),
+            label: Text('Metadata'),
+          ),
+        ],
+        selected: <_WorkspaceMode>{mode},
+        onSelectionChanged: (modes) => onModeChanged(modes.single),
+      ),
+    );
+  }
+}
+
 class _MobileTopBar extends StatelessWidget {
   const _MobileTopBar({
     required this.status,
-    required this.onPrivacyDetails,
+    required this.onHelp,
     required this.onSettings,
   });
 
   final String status;
-  final VoidCallback onPrivacyDetails;
-  final VoidCallback onSettings;
+  final VoidCallback onHelp;
+  final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -413,19 +540,20 @@ class _MobileTopBar extends StatelessWidget {
             ),
           ),
           Tooltip(
-            message: 'Privacy details',
+            message: 'Details',
             child: IconButton(
-              onPressed: onPrivacyDetails,
+              onPressed: onHelp,
               icon: const Icon(Icons.info_outline),
             ),
           ),
-          Tooltip(
-            message: 'Settings',
-            child: IconButton(
-              onPressed: onSettings,
-              icon: const Icon(Icons.tune),
+          if (onSettings != null)
+            Tooltip(
+              message: 'Settings',
+              child: IconButton(
+                onPressed: onSettings,
+                icon: const Icon(Icons.tune),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -644,7 +772,13 @@ void _showExportSheet(BuildContext context) {
                         onChanged: controller.setJpegQualityPreset,
                       ),
                     ],
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
+                    _KeepFilenamesToggle(
+                      label: 'Keep filename',
+                      value: state.preserveRedactionExportFileName,
+                      onChanged: controller.setPreserveRedactionExportFileName,
+                    ),
+                    const SizedBox(height: 18),
                     Row(
                       children: <Widget>[
                         Expanded(
@@ -717,11 +851,21 @@ void _showExportSheet(BuildContext context) {
   );
 }
 
-void _showPrivacyDetails(BuildContext context) {
-  final content = _PrivacyDetailsContent(
-    onClose: () => Navigator.of(context).pop(),
+void _showRedactDetails(BuildContext context) {
+  _showDetails(
+    context,
+    _RedactDetailsContent(onClose: () => Navigator.of(context).pop()),
   );
+}
 
+void _showMetadataDetails(BuildContext context) {
+  _showDetails(
+    context,
+    _MetadataDetailsContent(onClose: () => Navigator.of(context).pop()),
+  );
+}
+
+void _showDetails(BuildContext context, Widget content) {
   if (MediaQuery.sizeOf(context).width < 600) {
     showModalBottomSheet<void>(
       context: context,
@@ -754,8 +898,8 @@ void _showPrivacyDetails(BuildContext context) {
   );
 }
 
-class _PrivacyDetailsContent extends StatelessWidget {
-  const _PrivacyDetailsContent({required this.onClose});
+class _RedactDetailsContent extends StatelessWidget {
+  const _RedactDetailsContent({required this.onClose});
 
   final VoidCallback onClose;
 
@@ -801,13 +945,86 @@ class _PrivacyDetailsContent extends StatelessWidget {
             icon: Icons.cleaning_services_outlined,
             title: 'Metadata removed',
             body:
-                'PNG output keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG output removes APP0-APP15 and COM segments, which covers EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
+                'Redact export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.badge_outlined,
+            title: 'File names',
+            body:
+                'Exports start with a generic name. The Keep filename option only preserves the visible file name, not image metadata.',
           ),
           const _PrivacyPoint(
             icon: Icons.tune_outlined,
             title: 'Format choice',
             body:
                 'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetadataDetailsContent extends StatelessWidget {
+  const _MetadataDetailsContent({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Clean Metadata',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Tooltip(
+                message: 'Close',
+                child: IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const _PrivacyPoint(
+            icon: Icons.photo_library_outlined,
+            title: 'Batch input',
+            body:
+                'Choose one image, multiple images, a folder on desktop, or Photos on mobile. This mode does not draw redaction boxes.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.auto_fix_high_outlined,
+            title: 'Fast clean path',
+            body:
+                'PNG-to-PNG and JPEG-to-JPEG outputs strip metadata directly from a copied file container. Format changes decode visible pixels and encode a fresh clean file.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.cleaning_services_outlined,
+            title: 'Metadata removed',
+            body:
+                'PNG output keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.drive_file_rename_outline,
+            title: 'File names',
+            body:
+                'Generic names are used unless Keep filenames is enabled. Preserved names are sanitized and deduplicated inside the output folder.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.folder_copy_outlined,
+            title: 'Output',
+            body:
+                'Single images and multi-image picks save directly into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed and writes only cleaned images into it.',
           ),
         ],
       ),
@@ -861,6 +1078,473 @@ class _PrivacyPoint extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MetadataCleanerView extends ConsumerWidget {
+  const _MetadataCleanerView({required this.state, required this.desktop});
+
+  final RedactionState state;
+  final bool desktop;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(redactionControllerProvider.notifier);
+    final canClean = !state.isOpening && !state.isExporting;
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: desktop ? 720 : double.infinity),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          desktop ? 28 : 20,
+          desktop ? 28 : 20,
+          desktop ? 28 : 20,
+          28,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Clean Metadata',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const _PanelHeading('Input'),
+            if (desktop)
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: <Widget>[
+                  FilledButton.icon(
+                    onPressed: canClean
+                        ? controller.chooseMetadataImageFromFiles
+                        : null,
+                    icon: state.isOpening
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.image_outlined),
+                    label: const Text('Choose Image'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: canClean
+                        ? controller.chooseMetadataImagesFromFiles
+                        : null,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Choose Images'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: canClean
+                        ? controller.chooseMetadataFolder
+                        : null,
+                    icon: const Icon(Icons.folder_copy_outlined),
+                    label: const Text('Choose Folder'),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: canClean
+                          ? controller.chooseMetadataImagesFromFiles
+                          : null,
+                      icon: const Icon(Icons.folder_copy_outlined),
+                      label: const Text('Files'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: canClean
+                          ? controller.chooseMetadataImagesFromPhotos
+                          : null,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Photos'),
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 10),
+            _KeepFilenamesToggle(
+              label: 'Keep filenames',
+              value: state.preserveMetadataCleanFileNames,
+              onChanged: canClean
+                  ? controller.setPreserveMetadataCleanFileNames
+                  : null,
+            ),
+            const SizedBox(height: 14),
+            _MetadataInputSummary(
+              label: state.metadataInputLabel ?? 'No input selected',
+              description:
+                  state.metadataInputDescription ??
+                  'Choose an image, multiple images, or a folder.',
+              selected: state.hasMetadataInput,
+            ),
+            const SizedBox(height: 26),
+            const Divider(height: 1),
+            const SizedBox(height: 24),
+            const _PanelHeading('Output'),
+            _MetadataOutputFolderPicker(
+              displayName:
+                  state.metadataOutputDirectoryDisplayName ??
+                  (desktop
+                      ? 'Choose input to preview output'
+                      : 'Output: app Cleaned folder'),
+              path: state.metadataOutputDirectoryPath,
+              onChoose: desktop && canClean && state.hasMetadataInput
+                  ? controller.chooseMetadataOutputFolder
+                  : null,
+              onOpen:
+                  desktop &&
+                      canClean &&
+                      state.metadataOutputDirectoryPath != null
+                  ? controller.openMetadataOutputFolder
+                  : null,
+            ),
+            const SizedBox(height: 26),
+            const Divider(height: 1),
+            const SizedBox(height: 24),
+            const _PanelHeading('Format'),
+            _ExportFormatPicker(
+              selected: state.exportFormat,
+              onChanged: controller.setExportFormat,
+            ),
+            if (state.exportFormat == ExportFormat.jpeg) ...<Widget>[
+              const SizedBox(height: 18),
+              _JpegQualityPresetPicker(
+                selected: state.jpegQualityPreset,
+                onChanged: controller.setJpegQualityPreset,
+              ),
+            ],
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: canClean && state.hasMetadataInput
+                    ? controller.startMetadataClean
+                    : null,
+                icon: state.isExporting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.play_arrow),
+                label: const Text('Start'),
+              ),
+            ),
+            if (state.isCleaningMetadata) ...<Widget>[
+              const SizedBox(height: 14),
+              _MetadataProgressBanner(
+                progress: state.metadataCleanProgress,
+                status: state.status,
+              ),
+            ],
+            const SizedBox(height: 14),
+            const Text(
+              'PNG/JPEG keep the same format by stripping metadata directly. Format changes rebuild the visible pixels into a new clean file.',
+              style: TextStyle(color: Color(0xFF637066), height: 1.35),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFBFCFA),
+      child: Align(
+        alignment: desktop ? Alignment.topCenter : Alignment.topLeft,
+        child: content,
+      ),
+    );
+  }
+}
+
+class _MetadataProgressBanner extends StatelessWidget {
+  const _MetadataProgressBanner({required this.progress, required this.status});
+
+  final double? progress;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final clampedProgress = progress?.clamp(0.0, 1.0).toDouble();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFDCE2DC)),
+        color: Colors.white,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            status,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(value: clampedProgress),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetadataInputSummary extends StatelessWidget {
+  const _MetadataInputSummary({
+    required this.label,
+    required this.description,
+    required this.selected,
+  });
+
+  final String label;
+  final String description;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 54),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFDCE2DC)),
+        color: selected ? Colors.white : const Color(0xFFF4F7F3),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            selected ? Icons.check_circle_outline : Icons.inbox_outlined,
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : const Color(0xFF637066),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF637066),
+                    fontSize: 12,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetadataOutputFolderPicker extends StatelessWidget {
+  const _MetadataOutputFolderPicker({
+    required this.displayName,
+    required this.path,
+    required this.onChoose,
+    required this.onOpen,
+  });
+
+  final String displayName;
+  final String? path;
+  final VoidCallback? onChoose;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Tooltip(
+          message: path ?? displayName,
+          waitDuration: const Duration(milliseconds: 450),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () =>
+                  _showMetadataOutputDetails(context, displayName, path),
+              onLongPress: () =>
+                  _showMetadataOutputDetails(context, displayName, path),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 44),
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFDCE2DC)),
+                  color: Colors.white,
+                ),
+                child: Text(
+                  displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF637066),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (onChoose != null || onOpen != null) ...<Widget>[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              if (onOpen != null)
+                OutlinedButton.icon(
+                  onPressed: onOpen,
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Open Folder'),
+                ),
+              if (onChoose != null)
+                OutlinedButton.icon(
+                  onPressed: onChoose,
+                  icon: const Icon(Icons.drive_folder_upload_outlined),
+                  label: const Text('Choose Folder'),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+void _showMetadataOutputDetails(
+  BuildContext context,
+  String output,
+  String? path,
+) {
+  final copyValue = path ?? output;
+
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Full Output',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Close',
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFDCE2DC)),
+                  color: const Color(0xFFF7F9F6),
+                ),
+                child: SelectableText(
+                  output,
+                  style: const TextStyle(
+                    color: Color(0xFF26312A),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (path != null && path != output) ...<Widget>[
+                const SizedBox(height: 12),
+                const Text(
+                  'Folder Path',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFDCE2DC)),
+                    color: const Color(0xFFF7F9F6),
+                  ),
+                  child: SelectableText(
+                    path,
+                    style: const TextStyle(
+                      color: Color(0xFF26312A),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: copyValue));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Output copied')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copy'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _CanvasArea extends ConsumerWidget {
@@ -1188,6 +1872,8 @@ class _RedactionPaintSurface extends StatelessWidget {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    required this.mode,
+    required this.onModeChanged,
     required this.status,
     required this.canUndo,
     required this.canClear,
@@ -1201,9 +1887,11 @@ class _TopBar extends StatelessWidget {
     required this.onExport,
     required this.onShare,
     required this.onSaveToPhotos,
-    required this.onPrivacyDetails,
+    required this.onHelp,
   });
 
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
   final String status;
   final bool canUndo;
   final bool canClear;
@@ -1217,7 +1905,7 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onExport;
   final VoidCallback onShare;
   final VoidCallback onSaveToPhotos;
-  final VoidCallback onPrivacyDetails;
+  final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -1230,25 +1918,16 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Redact Kit',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'macOS / iOS',
-                style: TextStyle(
-                  color: Color(0xFF637066),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+          const Text(
+            'Redact Kit',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(width: 22),
+          SizedBox(
+            width: 280,
+            child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
+          ),
+          const SizedBox(width: 18),
           Expanded(
             child: Text(
               status,
@@ -1256,79 +1935,83 @@ class _TopBar extends StatelessWidget {
               style: const TextStyle(color: Color(0xFF637066)),
             ),
           ),
-          Tooltip(
-            message: 'Open from Files',
-            child: IconButton.filledTonal(
-              onPressed: isOpening ? null : onOpen,
-              icon: isOpening
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.folder_open),
+          if (mode == _WorkspaceMode.redact) ...<Widget>[
+            Tooltip(
+              message: 'Open from Files',
+              child: IconButton.filledTonal(
+                onPressed: isOpening ? null : onOpen,
+                icon: isOpening
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.folder_open),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Open from Photos',
+              child: IconButton.outlined(
+                onPressed: isOpening ? null : onOpenPhotos,
+                icon: const Icon(Icons.photo_library_outlined),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Undo',
+              child: IconButton.outlined(
+                onPressed: canUndo ? onUndo : null,
+                icon: const Icon(Icons.undo),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Clear',
+              child: IconButton.outlined(
+                onPressed: canClear ? onClear : null,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Save to Files',
+              child: IconButton.filled(
+                onPressed: canExport ? onExport : null,
+                icon: isExporting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_alt),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Save to Photos',
+              child: IconButton.filledTonal(
+                onPressed: canExport ? onSaveToPhotos : null,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Share',
+              child: IconButton.filledTonal(
+                onPressed: canExport ? onShare : null,
+                icon: const Icon(Icons.ios_share),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           Tooltip(
-            message: 'Open from Photos',
+            message: mode == _WorkspaceMode.redact
+                ? 'Redact details'
+                : 'Metadata details',
             child: IconButton.outlined(
-              onPressed: isOpening ? null : onOpenPhotos,
-              icon: const Icon(Icons.photo_library_outlined),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Undo',
-            child: IconButton.outlined(
-              onPressed: canUndo ? onUndo : null,
-              icon: const Icon(Icons.undo),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Clear',
-            child: IconButton.outlined(
-              onPressed: canClear ? onClear : null,
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Save to Files',
-            child: IconButton.filled(
-              onPressed: canExport ? onExport : null,
-              icon: isExporting
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save_alt),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Save to Photos',
-            child: IconButton.filledTonal(
-              onPressed: canExport ? onSaveToPhotos : null,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Share',
-            child: IconButton.filledTonal(
-              onPressed: canExport ? onShare : null,
-              icon: const Icon(Icons.ios_share),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Privacy details',
-            child: IconButton.outlined(
-              onPressed: onPrivacyDetails,
+              onPressed: onHelp,
               icon: const Icon(Icons.info_outline),
             ),
           ),
@@ -1345,9 +2028,11 @@ class _SidePanel extends StatelessWidget {
     required this.selectedColor,
     required this.exportFormat,
     required this.jpegQualityPreset,
+    required this.preserveRedactionExportFileName,
     required this.onColorChanged,
     required this.onExportFormatChanged,
     required this.onJpegQualityPresetChanged,
+    required this.onPreserveRedactionExportFileNameChanged,
   });
 
   final ui.Image? image;
@@ -1355,9 +2040,11 @@ class _SidePanel extends StatelessWidget {
   final Color selectedColor;
   final ExportFormat exportFormat;
   final JpegQualityPreset jpegQualityPreset;
+  final bool preserveRedactionExportFileName;
   final ValueChanged<Color> onColorChanged;
   final ValueChanged<ExportFormat> onExportFormatChanged;
   final ValueChanged<JpegQualityPreset> onJpegQualityPresetChanged;
+  final ValueChanged<bool> onPreserveRedactionExportFileNameChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,7 +2115,13 @@ class _SidePanel extends StatelessWidget {
                 onChanged: onJpegQualityPresetChanged,
               ),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
+            _KeepFilenamesToggle(
+              label: 'Keep filename',
+              value: preserveRedactionExportFileName,
+              onChanged: onPreserveRedactionExportFileNameChanged,
+            ),
+            const SizedBox(height: 18),
             Text(
               exportFormat == ExportFormat.png
                   ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
@@ -1617,6 +2310,54 @@ class _ColorSwatchButton extends StatelessWidget {
                       : Colors.white,
                 )
               : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _KeepFilenamesToggle extends StatelessWidget {
+  const _KeepFilenamesToggle({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onChanged != null;
+
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: enabled ? () => onChanged!(!value) : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: <Widget>[
+              Checkbox(
+                value: value,
+                onChanged: enabled ? (checked) => onChanged!(checked!) : null,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: enabled ? null : const Color(0xFF9AA49C),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

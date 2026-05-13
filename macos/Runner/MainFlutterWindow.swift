@@ -12,6 +12,7 @@ class MainFlutterWindow: NSWindow {
     setInitialWindowFrame()
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    registerFileChannel(binaryMessenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
 
@@ -36,5 +37,48 @@ class MainFlutterWindow: NSWindow {
       y: screenFrame.midY - targetSize.height / 2
     )
     self.setFrame(NSRect(origin: origin, size: targetSize), display: true)
+  }
+
+  private func registerFileChannel(binaryMessenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "app.redactkit/files",
+      binaryMessenger: binaryMessenger
+    )
+
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "openDirectory" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+
+      guard
+        let arguments = call.arguments as? [String: Any],
+        let path = arguments["path"] as? String
+      else {
+        result(FlutterError(
+          code: "bad_args",
+          message: "Missing output folder path.",
+          details: nil
+        ))
+        return
+      }
+
+      let url = URL(fileURLWithPath: path, isDirectory: true)
+      var isDirectory: ObjCBool = false
+      guard
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+        isDirectory.boolValue
+      else {
+        result(FlutterError(
+          code: "not_found",
+          message: "Output folder does not exist yet.",
+          details: path
+        ))
+        return
+      }
+
+      NSWorkspace.shared.open(url)
+      result(nil)
+    }
   }
 }

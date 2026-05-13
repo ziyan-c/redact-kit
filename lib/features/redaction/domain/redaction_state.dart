@@ -15,6 +15,7 @@ abstract class RedactionState with _$RedactionState {
 
   const factory RedactionState({
     ui.Image? image,
+    String? sourceFileName,
     @Default('Ready') String status,
     @Default(Color(0xFF050505)) Color redactionColor,
     Offset? draftStart,
@@ -23,10 +24,20 @@ abstract class RedactionState with _$RedactionState {
     @Default(false) bool isOpening,
     @Default(false) bool isExporting,
     @Default(ExportFormat.png) ExportFormat exportFormat,
-    @Default(JpegQualityPreset.high) JpegQualityPreset jpegQualityPreset,
+    @Default(JpegQualityPreset.medium) JpegQualityPreset jpegQualityPreset,
+    @Default(false) bool preserveRedactionExportFileName,
+    @Default(false) bool preserveMetadataCleanFileNames,
+    @Default(0) int metadataInputCount,
+    String? metadataInputLabel,
+    String? metadataInputDescription,
+    double? metadataCleanProgress,
+    String? metadataOutputDirectoryPath,
+    String? metadataOutputDirectoryDisplayName,
     @Default(<RedactionRegion>[]) List<RedactionRegion> redactions,
   }) = _RedactionState;
 
   bool get hasImage => image != null;
   bool get hasRedactions => redactions.isNotEmpty;
+  bool get hasMetadataInput => metadataInputCount > 0;
+  bool get isCleaningMetadata => metadataCleanProgress != null;
 }
