@@ -163,43 +163,50 @@ class _MobileLayout extends ConsumerWidget {
     final controller = ref.read(redactionControllerProvider.notifier);
     final canExport = state.hasImage && !state.isExporting;
 
-    return Column(
-      children: <Widget>[
-        _MobileTopBar(
-          status: state.status,
-          onHelp: () => mode == _WorkspaceMode.redact
-              ? _showRedactDetails(context)
-              : _showMetadataDetails(context),
-          onSettings: mode == _WorkspaceMode.redact
-              ? () => _showExportSheet(context)
-              : null,
-        ),
-        _ModeSwitcherBand(mode: mode, onModeChanged: onModeChanged),
-        Expanded(
-          child: mode == _WorkspaceMode.redact
-              ? _CanvasArea(
-                  state: state,
-                  margin: EdgeInsets.zero,
-                  showBorder: false,
-                  fitPadding: 12,
-                  showPhotoButton: true,
-                  enablePanZoom: true,
-                )
-              : _MetadataCleanerView(state: state, desktop: false),
-        ),
-        if (mode == _WorkspaceMode.redact)
-          _MobileBottomBar(
-            canUndo: state.hasRedactions,
-            canClear: state.hasRedactions,
-            isOpening: state.isOpening,
-            canExport: canExport,
-            onOpen: controller.openImage,
-            onOpenPhotos: controller.openPhotoLibrary,
-            onUndo: controller.undo,
-            onClear: controller.clear,
-            onExportOptions: () => _showExportSheet(context),
+    return ColoredBox(
+      color: const Color(0xFFF6F7F4),
+      child: Column(
+        children: <Widget>[
+          _MobileTopBar(
+            mode: mode,
+            status: state.status,
+            redactionCount: state.redactions.length,
+            hasMetadataInput: state.hasMetadataInput,
+            onHelp: () => mode == _WorkspaceMode.redact
+                ? _showRedactDetails(context)
+                : _showMetadataDetails(context),
+            onSettings: mode == _WorkspaceMode.redact
+                ? () => _showExportSheet(context)
+                : null,
           ),
-      ],
+          _ModeSwitcherBand(mode: mode, onModeChanged: onModeChanged),
+          Expanded(
+            child: mode == _WorkspaceMode.redact
+                ? _CanvasArea(
+                    state: state,
+                    margin: EdgeInsets.zero,
+                    showBorder: false,
+                    fitPadding: 14,
+                    showPhotoButton: true,
+                    enablePanZoom: true,
+                    compactEmptyState: true,
+                  )
+                : _MetadataCleanerView(state: state, desktop: false),
+          ),
+          if (mode == _WorkspaceMode.redact)
+            _MobileBottomBar(
+              canUndo: state.hasRedactions,
+              canClear: state.hasRedactions,
+              isOpening: state.isOpening,
+              canExport: canExport,
+              onOpen: controller.openImage,
+              onOpenPhotos: controller.openPhotoLibrary,
+              onUndo: controller.undo,
+              onClear: controller.clear,
+              onExportOptions: () => _showExportSheet(context),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -453,7 +460,7 @@ class _ModeSwitcherBand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
@@ -496,20 +503,32 @@ class _ModeSwitcher extends StatelessWidget {
 
 class _MobileTopBar extends StatelessWidget {
   const _MobileTopBar({
+    required this.mode,
     required this.status,
+    required this.redactionCount,
+    required this.hasMetadataInput,
     required this.onHelp,
     required this.onSettings,
   });
 
+  final _WorkspaceMode mode;
   final String status;
+  final int redactionCount;
+  final bool hasMetadataInput;
   final VoidCallback onHelp;
   final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
+    final summary = mode == _WorkspaceMode.redact
+        ? '$redactionCount redaction${redactionCount == 1 ? '' : 's'}'
+        : hasMetadataInput
+        ? 'Input selected'
+        : 'No input';
+
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      constraints: const BoxConstraints(minHeight: 72),
+      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
@@ -526,15 +545,23 @@ class _MobileTopBar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  status,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF637066),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                const SizedBox(height: 5),
+                Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        status,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF637066),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusPill(text: summary),
+                  ],
                 ),
               ],
             ),
@@ -555,6 +582,36 @@ class _MobileTopBar extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF1ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFDCE2DC)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Color(0xFF176B5B),
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
     );
   }
@@ -586,11 +643,18 @@ class _MobileBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      height: 78,
+      padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Color(0xFFDCE2DC))),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Color(0x1A19251F),
+            blurRadius: 18,
+            offset: Offset(0, -6),
+          ),
+        ],
       ),
       child: Row(
         children: <Widget>[
@@ -618,6 +682,7 @@ class _MobileBottomBar extends StatelessWidget {
             icon: canExport ? Icons.save_alt : Icons.tune,
             label: 'Export',
             onPressed: onExportOptions,
+            primary: canExport,
           ),
         ],
       ),
@@ -630,15 +695,24 @@ class _MobileToolbarItem extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.primary = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final bool primary;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+    final foreground = primary && enabled
+        ? Colors.white
+        : colorScheme.onSurface;
+    final background = primary && enabled
+        ? colorScheme.primary
+        : Colors.transparent;
 
     return Expanded(
       child: Tooltip(
@@ -646,9 +720,10 @@ class _MobileToolbarItem extends StatelessWidget {
         child: TextButton(
           onPressed: onPressed,
           style: TextButton.styleFrom(
-            foregroundColor: colorScheme.onSurface,
+            foregroundColor: foreground,
+            backgroundColor: background,
             disabledForegroundColor: const Color(0xFF9AA49C),
-            minimumSize: const Size(48, 56),
+            minimumSize: const Size(48, 60),
             padding: EdgeInsets.zero,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1090,6 +1165,14 @@ class _MetadataCleanerView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
     final canClean = !state.isOpening && !state.isExporting;
+    if (!desktop) {
+      return _MobileMetadataCleanerView(
+        state: state,
+        controller: controller,
+        canClean: canClean,
+      );
+    }
+
     final content = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: desktop ? 720 : double.infinity),
       child: SingleChildScrollView(
@@ -1270,6 +1353,244 @@ class _MetadataCleanerView extends ConsumerWidget {
         child: content,
       ),
     );
+  }
+}
+
+class _MobileMetadataCleanerView extends StatelessWidget {
+  const _MobileMetadataCleanerView({
+    required this.state,
+    required this.controller,
+    required this.canClean,
+  });
+
+  final RedactionState state;
+  final RedactionController controller;
+  final bool canClean;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFFF6F7F4),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Clean Metadata',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                _StatusPill(
+                  text: state.hasMetadataInput
+                      ? '${state.metadataInputCount} selected'
+                      : 'No input',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _MobileMetadataSection(
+              title: 'Input',
+              icon: Icons.add_photo_alternate_outlined,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: _MobileMetadataActionButton(
+                        icon: Icons.folder_copy_outlined,
+                        label: 'Files',
+                        onPressed: canClean
+                            ? controller.chooseMetadataImagesFromFiles
+                            : null,
+                        filled: true,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _MobileMetadataActionButton(
+                        icon: Icons.photo_library_outlined,
+                        label: 'Photos',
+                        onPressed: canClean
+                            ? controller.chooseMetadataImagesFromPhotos
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _KeepFilenamesToggle(
+                  label: 'Keep filenames',
+                  value: state.preserveMetadataCleanFileNames,
+                  onChanged: canClean
+                      ? controller.setPreserveMetadataCleanFileNames
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                _MetadataInputSummary(
+                  label: state.metadataInputLabel ?? 'No input selected',
+                  description:
+                      state.metadataInputDescription ??
+                      'Choose an image, multiple images, or a folder.',
+                  selected: state.hasMetadataInput,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _MobileMetadataSection(
+              title: 'Output',
+              icon: Icons.folder_open,
+              children: <Widget>[
+                _MetadataOutputFolderPicker(
+                  displayName:
+                      state.metadataOutputDirectoryDisplayName ??
+                      'Output: app Cleaned folder',
+                  path: state.metadataOutputDirectoryPath,
+                  onChoose: null,
+                  onOpen: null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _MobileMetadataSection(
+              title: 'Format',
+              icon: Icons.tune_outlined,
+              children: <Widget>[
+                _ExportFormatPicker(
+                  selected: state.exportFormat,
+                  onChanged: controller.setExportFormat,
+                ),
+                if (state.exportFormat == ExportFormat.jpeg) ...<Widget>[
+                  const SizedBox(height: 16),
+                  _JpegQualityPresetPicker(
+                    selected: state.jpegQualityPreset,
+                    onChanged: controller.setJpegQualityPreset,
+                  ),
+                ],
+              ],
+            ),
+            if (state.isCleaningMetadata) ...<Widget>[
+              const SizedBox(height: 12),
+              _MetadataProgressBanner(
+                progress: state.metadataCleanProgress,
+                status: state.status,
+              ),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: canClean && state.hasMetadataInput
+                    ? controller.startMetadataClean
+                    : null,
+                icon: state.isExporting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.play_arrow),
+                label: const Text('Start'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileMetadataSection extends StatelessWidget {
+  const _MobileMetadataSection({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFDCE2DC)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                icon,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileMetadataActionButton extends StatelessWidget {
+  const _MobileMetadataActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        Icon(icon, size: 20),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+
+    final style = ButtonStyle(
+      minimumSize: WidgetStateProperty.all(const Size.fromHeight(50)),
+      shape: WidgetStateProperty.all(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+
+    return filled
+        ? FilledButton(onPressed: onPressed, style: style, child: child)
+        : FilledButton.tonal(onPressed: onPressed, style: style, child: child);
   }
 }
 
@@ -1555,6 +1876,7 @@ class _CanvasArea extends ConsumerWidget {
     this.fitPadding = 24,
     this.showPhotoButton = false,
     this.enablePanZoom = false,
+    this.compactEmptyState = false,
   });
 
   final RedactionState state;
@@ -1563,6 +1885,7 @@ class _CanvasArea extends ConsumerWidget {
   final double fitPadding;
   final bool showPhotoButton;
   final bool enablePanZoom;
+  final bool compactEmptyState;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1579,33 +1902,42 @@ class _CanvasArea extends ConsumerWidget {
               : null,
         ),
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox(
-                width: 220,
-                child: FilledButton.icon(
-                  onPressed: state.isOpening ? null : controller.openImage,
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('Open from Files'),
-                ),
-              ),
-              if (showPhotoButton)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: SizedBox(
-                    width: 220,
-                    child: FilledButton.tonalIcon(
-                      onPressed: state.isOpening
-                          ? null
-                          : controller.openPhotoLibrary,
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('Open from Photos'),
+          child: compactEmptyState
+              ? _MobileCanvasEmptyState(
+                  isOpening: state.isOpening,
+                  showPhotoButton: showPhotoButton,
+                  onOpen: controller.openImage,
+                  onOpenPhotos: controller.openPhotoLibrary,
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    SizedBox(
+                      width: 220,
+                      child: FilledButton.icon(
+                        onPressed: state.isOpening
+                            ? null
+                            : controller.openImage,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Open from Files'),
+                      ),
                     ),
-                  ),
+                    if (showPhotoButton)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: SizedBox(
+                          width: 220,
+                          child: FilledButton.tonalIcon(
+                            onPressed: state.isOpening
+                                ? null
+                                : controller.openPhotoLibrary,
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Open from Photos'),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       );
     }
@@ -1658,6 +1990,76 @@ class _CanvasArea extends ConsumerWidget {
       (bounds.height - fitted.height) / 2,
       fitted.width,
       fitted.height,
+    );
+  }
+}
+
+class _MobileCanvasEmptyState extends StatelessWidget {
+  const _MobileCanvasEmptyState({
+    required this.isOpening,
+    required this.showPhotoButton,
+    required this.onOpen,
+    required this.onOpenPhotos,
+  });
+
+  final bool isOpening;
+  final bool showPhotoButton;
+  final VoidCallback onOpen;
+  final VoidCallback onOpenPhotos;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF1ED),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFDCE2DC)),
+              ),
+              child: const SizedBox.square(
+                dimension: 58,
+                child: Icon(
+                  Icons.privacy_tip_outlined,
+                  color: Color(0xFF176B5B),
+                  size: 30,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Choose an image',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: isOpening ? null : onOpen,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Open from Files'),
+              ),
+            ),
+            if (showPhotoButton) ...<Widget>[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: isOpening ? null : onOpenPhotos,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Open from Photos'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
