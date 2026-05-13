@@ -29,6 +29,23 @@ flutter run -d macos
 flutter run -d ios
 ```
 
+## GitHub macOS release
+
+The GitHub Actions workflow in `.github/workflows/macos-release.yml` builds a
+macOS `.app` bundle, zips it, uploads the zip as a workflow artifact, and
+attaches it to a GitHub Release when a `v*` version tag is pushed.
+
+Create a release build by pushing a `v`-prefixed tag:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The uploaded zip keeps the full tag in the file name, such as
+`Redact-Kit-macOS-v1.0.0.zip`. It is not Developer ID notarized unless Apple
+signing and notarization secrets are added later.
+
 ## Development
 
 This project uses a generated-code Flutter structure:

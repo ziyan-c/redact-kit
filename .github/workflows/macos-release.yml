@@ -1,0 +1,103 @@
+name: macOS Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS app
+    runs-on: macos-14
+
+    env:
+      APP_NAME: Redact Kit
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Compute build version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build_name="$(awk '/^version: / { print $2 }' pubspec.yaml)"
+          build_name="${build_name%%+*}"
+          release_name="${build_name}"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_name="${GITHUB_REF_NAME}"
+          fi
+
+          echo "build_name=${build_name}" >> "${GITHUB_OUTPUT}"
+          echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${GITHUB_RUN_NUMBER}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build macOS release
+        run: |
+          flutter build macos --release \
+            --build-name "${{ steps.version.outputs.build_name }}" \
+            --build-number "${{ steps.version.outputs.build_number }}"
+
+      - name: Package app bundle
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="build/macos/Build/Products/Release/${APP_NAME}.app"
+          version="${{ steps.version.outputs.release_name }}"
+          zip_name="Redact-Kit-macOS-${version}.zip"
+
+          if [[ ! -d "${app_path}" ]]; then
+            echo "Expected app bundle not found: ${app_path}" >&2
+            exit 1
+          fi
+
+          ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${zip_name}"
+          shasum -a 256 "${zip_name}" > "${zip_name}.sha256"
+
+          echo "zip_name=${zip_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: redact-kit-macos
+          if-no-files-found: error
+          path: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.zip_name }}.sha256
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.zip_name }}.sha256
