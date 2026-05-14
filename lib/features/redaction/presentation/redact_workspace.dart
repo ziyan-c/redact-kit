@@ -1,17 +1,21 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/platform_style.dart';
 import '../application/redaction_controller.dart';
 import '../domain/export_format.dart';
 import '../domain/jpeg_quality_preset.dart';
+import '../domain/pdf_quality_preset.dart';
+import '../domain/redaction_region.dart';
 import '../domain/redaction_state.dart';
 import 'redaction_painter.dart';
 
-enum _WorkspaceMode { redact, metadata }
+enum _WorkspaceMode { redact, pdf, metadata }
 
 class RedactWorkspace extends ConsumerStatefulWidget {
   const RedactWorkspace({super.key});
@@ -22,11 +26,16 @@ class RedactWorkspace extends ConsumerStatefulWidget {
 
 class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
   _WorkspaceMode _mode = _WorkspaceMode.redact;
+  String? _lastCompletionNoticeStatus;
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(redactionControllerProvider);
     final controller = ref.read(redactionControllerProvider.notifier);
+    ref.listen<RedactionState>(
+      redactionControllerProvider,
+      _showCompletionNoticeWhenFinished,
+    );
 
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
@@ -40,28 +49,41 @@ class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
       child: Actions(
         actions: <Type, Action<Intent>>{
           OpenImageIntent: CallbackAction<OpenImageIntent>(
-            onInvoke: (_) => controller.openImage(),
+            onInvoke: (_) => _mode == _WorkspaceMode.pdf
+                ? controller.openPdf()
+                : controller.openImage(),
           ),
           ExportImageIntent: CallbackAction<ExportImageIntent>(
-            onInvoke: (_) => controller.exportImage(),
+            onInvoke: (_) => _mode == _WorkspaceMode.pdf
+                ? controller.exportPdf()
+                : controller.exportImage(),
           ),
           UndoRedactionIntent: CallbackAction<UndoRedactionIntent>(
             onInvoke: (_) {
-              controller.undo();
+              if (_mode == _WorkspaceMode.pdf) {
+                controller.undoPdfRedaction();
+              } else {
+                controller.undo();
+              }
               return null;
             },
           ),
           ClearRedactionsIntent: CallbackAction<ClearRedactionsIntent>(
             onInvoke: (_) {
-              controller.clear();
+              if (_mode == _WorkspaceMode.pdf) {
+                controller.clearPdfPageRedactions();
+              } else {
+                controller.clear();
+              }
               return null;
             },
           ),
         },
         child: Focus(
           autofocus: true,
-          child: Scaffold(
-            body: SafeArea(
+          child: CupertinoPageScaffold(
+            backgroundColor: redactKitBackgroundColor,
+            child: SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 600) {
@@ -80,55 +102,10 @@ class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
                     );
                   }
 
-                  return Column(
-                    children: <Widget>[
-                      _TopBar(
-                        mode: _mode,
-                        onModeChanged: _setMode,
-                        status: state.status,
-                        canUndo: state.hasRedactions,
-                        canClear: state.hasRedactions,
-                        canExport: state.hasImage && !state.isExporting,
-                        isOpening: state.isOpening,
-                        isExporting: state.isExporting,
-                        onOpen: controller.openImage,
-                        onOpenPhotos: controller.openPhotoLibrary,
-                        onUndo: controller.undo,
-                        onClear: controller.clear,
-                        onExport: controller.exportImage,
-                        onShare: controller.shareImage,
-                        onSaveToPhotos: controller.saveImageToPhotos,
-                        onHelp: () => _mode == _WorkspaceMode.redact
-                            ? _showRedactDetails(context)
-                            : _showMetadataDetails(context),
-                      ),
-                      Expanded(
-                        child: _mode == _WorkspaceMode.redact
-                            ? Row(
-                                children: <Widget>[
-                                  Expanded(child: _CanvasArea(state: state)),
-                                  _SidePanel(
-                                    image: state.image,
-                                    redactionCount: state.redactions.length,
-                                    selectedColor: state.redactionColor,
-                                    exportFormat: state.exportFormat,
-                                    jpegQualityPreset: state.jpegQualityPreset,
-                                    preserveRedactionExportFileName:
-                                        state.preserveRedactionExportFileName,
-                                    onColorChanged: controller.selectColor,
-                                    onExportFormatChanged:
-                                        controller.setExportFormat,
-                                    onJpegQualityPresetChanged:
-                                        controller.setJpegQualityPreset,
-                                    onPreserveRedactionExportFileNameChanged:
-                                        controller
-                                            .setPreserveRedactionExportFileName,
-                                  ),
-                                ],
-                              )
-                            : _MetadataCleanerView(state: state, desktop: true),
-                      ),
-                    ],
+                  return _DesktopLayout(
+                    state: state,
+                    mode: _mode,
+                    onModeChanged: _setMode,
                   );
                 },
               ),
@@ -144,6 +121,369 @@ class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
     setState(() {
       _mode = mode;
     });
+  }
+
+  void _showCompletionNoticeWhenFinished(
+    RedactionState? previous,
+    RedactionState next,
+  ) {
+    if (previous == null) return;
+    if (next.isExporting) {
+      _lastCompletionNoticeStatus = null;
+      return;
+    }
+
+    if (!previous.isExporting || next.isExporting) return;
+
+    final notice = _completionNoticeForStatus(next.status);
+    if (notice == null) return;
+    if (_lastCompletionNoticeStatus == next.status) return;
+
+    _lastCompletionNoticeStatus = next.status;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showCompletionNotice(context, notice);
+    });
+  }
+}
+
+enum _NoticeTone { success, warning, error }
+
+class _CompletionNotice {
+  const _CompletionNotice({
+    required this.title,
+    required this.message,
+    required this.tone,
+  });
+
+  final String title;
+  final String message;
+  final _NoticeTone tone;
+}
+
+_CompletionNotice? _completionNoticeForStatus(String status) {
+  if (status.startsWith('Exported clean ')) {
+    return const _CompletionNotice(
+      title: 'Clean image exported',
+      message: 'Redactions are burned in and metadata is removed.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Saved clean ')) {
+    return const _CompletionNotice(
+      title: 'Saved to Photos',
+      message: 'The clean image is ready in your photo library.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Shared clean ')) {
+    return const _CompletionNotice(
+      title: 'Ready to share',
+      message: 'A clean copy was prepared for sharing.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Saved metadata-clean ')) {
+    if (status == 'Saved metadata-clean PDF') {
+      return const _CompletionNotice(
+        title: 'PDF cleaned',
+        message: 'A flattened PDF was saved without original metadata.',
+        tone: _NoticeTone.success,
+      );
+    }
+
+    return const _CompletionNotice(
+      title: 'Metadata removed',
+      message: 'A clean image copy was saved without private metadata.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Exported clean PDF')) {
+    return const _CompletionNotice(
+      title: 'Clean PDF exported',
+      message: 'Pages were flattened and PDF metadata was removed.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Success: cleaned metadata for ')) {
+    return const _CompletionNotice(
+      title: 'Metadata cleaned',
+      message: 'Clean copies were saved to the output folder.',
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.startsWith('Cleaned metadata for ')) {
+    return const _CompletionNotice(
+      title: 'Metadata cleaned with notes',
+      message: 'Some files need attention. Check the status text for details.',
+      tone: _NoticeTone.warning,
+    );
+  }
+
+  if (status.startsWith('Could not export image') ||
+      status.startsWith('Could not clean metadata') ||
+      status.startsWith('Could not create output folder')) {
+    return _CompletionNotice(
+      title: 'Could not finish',
+      message: status,
+      tone: _NoticeTone.error,
+    );
+  }
+
+  return null;
+}
+
+void _showCompletionNotice(BuildContext context, _CompletionNotice notice) {
+  final isMobile = MediaQuery.sizeOf(context).width < 600;
+  final overlay = Overlay.of(context);
+  late final OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (context) => Positioned(
+      left: 16,
+      right: 16,
+      bottom: isMobile ? 96 : 24,
+      child: SafeArea(
+        top: false,
+        child: IgnorePointer(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: _CompletionNoticeCard(notice: notice),
+          ),
+        ),
+      ),
+    ),
+  );
+  overlay.insert(entry);
+  Future<void>.delayed(const Duration(milliseconds: 2800), () {
+    if (entry.mounted) entry.remove();
+  });
+}
+
+class _CompletionNoticeCard extends StatelessWidget {
+  const _CompletionNoticeCard({required this.notice});
+
+  final _CompletionNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (notice.tone) {
+      _NoticeTone.success => redactKitSystemGreenColor,
+      _NoticeTone.warning => redactKitSystemOrangeColor,
+      _NoticeTone.error => redactKitSystemRedColor,
+    };
+    final background = switch (notice.tone) {
+      _NoticeTone.success => redactKitSystemGreenFillColor,
+      _NoticeTone.warning => redactKitSystemOrangeFillColor,
+      _NoticeTone.error => redactKitSystemRedFillColor,
+    };
+    final icon = switch (notice.tone) {
+      _NoticeTone.success => Icons.check_circle,
+      _NoticeTone.warning => Icons.info,
+      _NoticeTone.error => Icons.error_outline,
+    };
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x26000000),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SizedBox.square(
+                dimension: 38,
+                child: Icon(icon, color: accent, size: 22),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    notice.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: redactKitPrimaryTextColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    notice.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: redactKitMutedTextColor,
+                      fontSize: 12,
+                      height: 1.25,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopLayout extends ConsumerWidget {
+  const _DesktopLayout({
+    required this.state,
+    required this.mode,
+    required this.onModeChanged,
+  });
+
+  final RedactionState state;
+  final _WorkspaceMode mode;
+  final ValueChanged<_WorkspaceMode> onModeChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(redactionControllerProvider.notifier);
+
+    return ColoredBox(
+      color: redactKitBackgroundColor,
+      child: Column(
+        children: <Widget>[
+          _TopBar(
+            mode: mode,
+            onModeChanged: onModeChanged,
+            status: state.status,
+            canUndo: mode == _WorkspaceMode.pdf
+                ? state.currentPdfRedactions.isNotEmpty
+                : state.hasRedactions,
+            canClear: mode == _WorkspaceMode.pdf
+                ? state.currentPdfRedactions.isNotEmpty
+                : state.hasRedactions,
+            canExport: mode == _WorkspaceMode.pdf
+                ? state.hasPdf && !state.isExporting
+                : state.hasImage && !state.isExporting,
+            isOpening: state.isOpening,
+            isExporting: state.isExporting,
+            onOpen: mode == _WorkspaceMode.pdf
+                ? controller.openPdf
+                : controller.openImage,
+            onOpenPhotos: controller.openPhotoLibrary,
+            onUndo: mode == _WorkspaceMode.pdf
+                ? controller.undoPdfRedaction
+                : controller.undo,
+            onClear: mode == _WorkspaceMode.pdf
+                ? controller.clearPdfPageRedactions
+                : controller.clear,
+            onExport: mode == _WorkspaceMode.pdf
+                ? controller.exportPdf
+                : controller.exportImage,
+            onShare: controller.shareImage,
+            onSaveToPhotos: controller.saveImageToPhotos,
+            onHelp: () => switch (mode) {
+              _WorkspaceMode.redact => _showRedactDetails(context),
+              _WorkspaceMode.pdf => _showPdfDetails(context),
+              _WorkspaceMode.metadata => _showMetadataDetails(context),
+            },
+          ),
+          Expanded(
+            child: switch (mode) {
+              _WorkspaceMode.redact => Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _CanvasArea(
+                      state: state,
+                      image: state.image,
+                      redactions: state.redactions,
+                      onBeginRedaction: controller.beginRedaction,
+                      onUpdateRedaction: controller.updateRedaction,
+                      onFinishRedaction: controller.finishRedaction,
+                      onOpen: controller.openImage,
+                      onOpenPhotos: controller.openPhotoLibrary,
+                      emptyTitle: 'Choose an image',
+                      openLabel: 'Open from Files',
+                      fitPadding: 28,
+                      compactEmptyState: true,
+                    ),
+                  ),
+                  _SidePanel(
+                    image: state.image,
+                    redactionCount: state.redactions.length,
+                    selectedColor: state.redactionColor,
+                    exportFormat: state.exportFormat,
+                    jpegQualityPreset: state.jpegQualityPreset,
+                    preserveRedactionExportFileName:
+                        state.preserveRedactionExportFileName,
+                    onColorChanged: controller.selectColor,
+                    onExportFormatChanged: controller.setExportFormat,
+                    onJpegQualityPresetChanged: controller.setJpegQualityPreset,
+                    onPreserveRedactionExportFileNameChanged:
+                        controller.setPreserveRedactionExportFileName,
+                  ),
+                ],
+              ),
+              _WorkspaceMode.pdf => Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _CanvasArea(
+                      state: state,
+                      image: state.pdfPageImage,
+                      redactions: state.currentPdfRedactions,
+                      onBeginRedaction: controller.beginPdfRedaction,
+                      onUpdateRedaction: controller.updatePdfRedaction,
+                      onFinishRedaction: controller.finishPdfRedaction,
+                      onOpen: controller.openPdf,
+                      emptyTitle: 'Choose a PDF',
+                      openLabel: 'Open PDF',
+                      fitPadding: 28,
+                      compactEmptyState: true,
+                    ),
+                  ),
+                  _PdfSidePanel(
+                    state: state,
+                    selectedColor: state.redactionColor,
+                    onColorChanged: controller.selectColor,
+                    onPreviousPage: controller.previousPdfPage,
+                    onNextPage: controller.nextPdfPage,
+                    onPageChanged: controller.showPdfPage,
+                    onExport: controller.exportPdf,
+                    onPdfQualityPresetChanged: controller.setPdfQualityPreset,
+                    onPreservePdfExportFileNameChanged:
+                        controller.setPreservePdfExportFileName,
+                  ),
+                ],
+              ),
+              _WorkspaceMode.metadata => _MetadataCleanerView(
+                state: state,
+                desktop: true,
+              ),
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -161,49 +501,109 @@ class _MobileLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
-    final canExport = state.hasImage && !state.isExporting;
+    final canExport = mode == _WorkspaceMode.pdf
+        ? state.hasPdf && !state.isExporting
+        : state.hasImage && !state.isExporting;
 
     return ColoredBox(
-      color: const Color(0xFFF6F7F4),
+      color: redactKitBackgroundColor,
       child: Column(
         children: <Widget>[
           _MobileTopBar(
             mode: mode,
             status: state.status,
-            redactionCount: state.redactions.length,
+            redactionCount: mode == _WorkspaceMode.pdf
+                ? state.currentPdfRedactions.length
+                : state.redactions.length,
             hasMetadataInput: state.hasMetadataInput,
-            onHelp: () => mode == _WorkspaceMode.redact
-                ? _showRedactDetails(context)
-                : _showMetadataDetails(context),
+            hasPdf: state.hasPdf,
+            onHelp: () => switch (mode) {
+              _WorkspaceMode.redact => _showRedactDetails(context),
+              _WorkspaceMode.pdf => _showPdfDetails(context),
+              _WorkspaceMode.metadata => _showMetadataDetails(context),
+            },
             onSettings: mode == _WorkspaceMode.redact
                 ? () => _showExportSheet(context)
+                : mode == _WorkspaceMode.pdf
+                ? () => _showPdfExportSheet(context)
                 : null,
           ),
           _ModeSwitcherBand(mode: mode, onModeChanged: onModeChanged),
+          if (mode == _WorkspaceMode.pdf && state.hasPdf)
+            _PdfPageNavigationStrip(
+              currentPage: state.pdfCurrentPage,
+              pageCount: state.pdfPageCount,
+              isBusy: state.isOpening || state.isExporting,
+              onPrevious: controller.previousPdfPage,
+              onNext: controller.nextPdfPage,
+              onPageChanged: controller.showPdfPage,
+            ),
           Expanded(
-            child: mode == _WorkspaceMode.redact
-                ? _CanvasArea(
-                    state: state,
-                    margin: EdgeInsets.zero,
-                    showBorder: false,
-                    fitPadding: 14,
-                    showPhotoButton: true,
-                    enablePanZoom: true,
-                    compactEmptyState: true,
-                  )
-                : _MetadataCleanerView(state: state, desktop: false),
+            child: switch (mode) {
+              _WorkspaceMode.redact => _CanvasArea(
+                state: state,
+                image: state.image,
+                redactions: state.redactions,
+                onBeginRedaction: controller.beginRedaction,
+                onUpdateRedaction: controller.updateRedaction,
+                onFinishRedaction: controller.finishRedaction,
+                onOpen: controller.openImage,
+                onOpenPhotos: controller.openPhotoLibrary,
+                emptyTitle: 'Choose an image',
+                openLabel: 'Open from Files',
+                margin: EdgeInsets.zero,
+                showBorder: false,
+                fitPadding: 14,
+                showPhotoButton: true,
+                enablePanZoom: true,
+                compactEmptyState: true,
+              ),
+              _WorkspaceMode.pdf => _CanvasArea(
+                state: state,
+                image: state.pdfPageImage,
+                redactions: state.currentPdfRedactions,
+                onBeginRedaction: controller.beginPdfRedaction,
+                onUpdateRedaction: controller.updatePdfRedaction,
+                onFinishRedaction: controller.finishPdfRedaction,
+                onOpen: controller.openPdf,
+                emptyTitle: 'Choose a PDF',
+                openLabel: 'Open PDF',
+                margin: EdgeInsets.zero,
+                showBorder: false,
+                fitPadding: 14,
+                enablePanZoom: true,
+                compactEmptyState: true,
+              ),
+              _WorkspaceMode.metadata => _MetadataCleanerView(
+                state: state,
+                desktop: false,
+              ),
+            },
           ),
-          if (mode == _WorkspaceMode.redact)
+          if (mode == _WorkspaceMode.redact || mode == _WorkspaceMode.pdf)
             _MobileBottomBar(
-              canUndo: state.hasRedactions,
-              canClear: state.hasRedactions,
+              canUndo: mode == _WorkspaceMode.pdf
+                  ? state.currentPdfRedactions.isNotEmpty
+                  : state.hasRedactions,
+              canClear: mode == _WorkspaceMode.pdf
+                  ? state.currentPdfRedactions.isNotEmpty
+                  : state.hasRedactions,
               isOpening: state.isOpening,
               canExport: canExport,
-              onOpen: controller.openImage,
+              onOpen: mode == _WorkspaceMode.pdf
+                  ? controller.openPdf
+                  : controller.openImage,
               onOpenPhotos: controller.openPhotoLibrary,
-              onUndo: controller.undo,
-              onClear: controller.clear,
-              onExportOptions: () => _showExportSheet(context),
+              onUndo: mode == _WorkspaceMode.pdf
+                  ? controller.undoPdfRedaction
+                  : controller.undo,
+              onClear: mode == _WorkspaceMode.pdf
+                  ? controller.clearPdfPageRedactions
+                  : controller.clear,
+              onExportOptions: mode == _WorkspaceMode.pdf
+                  ? () => _showPdfExportSheet(context)
+                  : () => _showExportSheet(context),
+              pdfMode: mode == _WorkspaceMode.pdf,
             ),
         ],
       ),
@@ -225,7 +625,9 @@ class _TabletLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
-    final canExport = state.hasImage && !state.isExporting;
+    final canExport = mode == _WorkspaceMode.pdf
+        ? state.hasPdf && !state.isExporting
+        : state.hasImage && !state.isExporting;
 
     return Column(
       children: <Widget>[
@@ -233,35 +635,87 @@ class _TabletLayout extends ConsumerWidget {
           mode: mode,
           onModeChanged: onModeChanged,
           status: state.status,
-          canUndo: state.hasRedactions,
-          canClear: state.hasRedactions,
+          canUndo: mode == _WorkspaceMode.pdf
+              ? state.currentPdfRedactions.isNotEmpty
+              : state.hasRedactions,
+          canClear: mode == _WorkspaceMode.pdf
+              ? state.currentPdfRedactions.isNotEmpty
+              : state.hasRedactions,
           canExport: canExport,
           isOpening: state.isOpening,
           isExporting: state.isExporting,
-          onOpen: controller.openImage,
+          onOpen: mode == _WorkspaceMode.pdf
+              ? controller.openPdf
+              : controller.openImage,
           onOpenPhotos: controller.openPhotoLibrary,
-          onUndo: controller.undo,
-          onClear: controller.clear,
-          onExport: controller.exportImage,
+          onUndo: mode == _WorkspaceMode.pdf
+              ? controller.undoPdfRedaction
+              : controller.undo,
+          onClear: mode == _WorkspaceMode.pdf
+              ? controller.clearPdfPageRedactions
+              : controller.clear,
+          onExport: mode == _WorkspaceMode.pdf
+              ? controller.exportPdf
+              : controller.exportImage,
           onSaveToPhotos: controller.saveImageToPhotos,
           onShare: controller.shareImage,
-          onHelp: () => mode == _WorkspaceMode.redact
-              ? _showRedactDetails(context)
-              : _showMetadataDetails(context),
+          onHelp: () => switch (mode) {
+            _WorkspaceMode.redact => _showRedactDetails(context),
+            _WorkspaceMode.pdf => _showPdfDetails(context),
+            _WorkspaceMode.metadata => _showMetadataDetails(context),
+          },
           onSettings: mode == _WorkspaceMode.redact
               ? () => _showExportSheet(context)
+              : mode == _WorkspaceMode.pdf
+              ? () => _showPdfExportSheet(context)
               : null,
         ),
+        if (mode == _WorkspaceMode.pdf && state.hasPdf)
+          _PdfPageNavigationStrip(
+            currentPage: state.pdfCurrentPage,
+            pageCount: state.pdfPageCount,
+            isBusy: state.isOpening || state.isExporting,
+            onPrevious: controller.previousPdfPage,
+            onNext: controller.nextPdfPage,
+            onPageChanged: controller.showPdfPage,
+          ),
         Expanded(
-          child: mode == _WorkspaceMode.redact
-              ? _CanvasArea(
-                  state: state,
-                  margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  fitPadding: 16,
-                  showPhotoButton: true,
-                  enablePanZoom: true,
-                )
-              : _MetadataCleanerView(state: state, desktop: false),
+          child: switch (mode) {
+            _WorkspaceMode.redact => _CanvasArea(
+              state: state,
+              image: state.image,
+              redactions: state.redactions,
+              onBeginRedaction: controller.beginRedaction,
+              onUpdateRedaction: controller.updateRedaction,
+              onFinishRedaction: controller.finishRedaction,
+              onOpen: controller.openImage,
+              onOpenPhotos: controller.openPhotoLibrary,
+              emptyTitle: 'Choose an image',
+              openLabel: 'Open from Files',
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              fitPadding: 16,
+              showPhotoButton: true,
+              enablePanZoom: true,
+            ),
+            _WorkspaceMode.pdf => _CanvasArea(
+              state: state,
+              image: state.pdfPageImage,
+              redactions: state.currentPdfRedactions,
+              onBeginRedaction: controller.beginPdfRedaction,
+              onUpdateRedaction: controller.updatePdfRedaction,
+              onFinishRedaction: controller.finishPdfRedaction,
+              onOpen: controller.openPdf,
+              emptyTitle: 'Choose a PDF',
+              openLabel: 'Open PDF',
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              fitPadding: 16,
+              enablePanZoom: true,
+            ),
+            _WorkspaceMode.metadata => _MetadataCleanerView(
+              state: state,
+              desktop: false,
+            ),
+          },
         ),
       ],
     );
@@ -314,7 +768,7 @@ class _TabletTopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
+        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
       ),
       child: Row(
         children: <Widget>[
@@ -333,7 +787,7 @@ class _TabletTopBar extends StatelessWidget {
                   status,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF637066),
+                    color: redactKitMutedTextColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -344,23 +798,26 @@ class _TabletTopBar extends StatelessWidget {
             width: 260,
             child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
           ),
-          if (mode == _WorkspaceMode.redact) ...<Widget>[
+          if (mode != _WorkspaceMode.metadata) ...<Widget>[
             _TopBarIconButton(
-              tooltip: 'Open from Files',
+              tooltip: mode == _WorkspaceMode.pdf
+                  ? 'Open PDF'
+                  : 'Open from Files',
               onPressed: isOpening ? null : onOpen,
               icon: isOpening
                   ? const SizedBox.square(
                       dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CupertinoActivityIndicator(radius: 9),
                     )
                   : const Icon(Icons.folder_open),
               tonal: true,
             ),
-            _TopBarIconButton(
-              tooltip: 'Open from Photos',
-              onPressed: isOpening ? null : onOpenPhotos,
-              icon: const Icon(Icons.photo_library_outlined),
-            ),
+            if (mode == _WorkspaceMode.redact)
+              _TopBarIconButton(
+                tooltip: 'Open from Photos',
+                onPressed: isOpening ? null : onOpenPhotos,
+                icon: const Icon(Icons.photo_library_outlined),
+              ),
             _TopBarIconButton(
               tooltip: 'Undo',
               onPressed: canUndo ? onUndo : null,
@@ -377,39 +834,40 @@ class _TabletTopBar extends StatelessWidget {
               icon: isExporting
                   ? const SizedBox.square(
                       dimension: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
+                      child: CupertinoActivityIndicator(color: Colors.white),
                     )
                   : const Icon(Icons.save_alt),
               filled: true,
             ),
-            _TopBarIconButton(
-              tooltip: 'Save to Photos',
-              onPressed: canExport ? onSaveToPhotos : null,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-              tonal: true,
-            ),
-            _TopBarIconButton(
-              tooltip: 'Share',
-              onPressed: canExport ? onShare : null,
-              icon: const Icon(Icons.ios_share),
-              tonal: true,
-            ),
+            if (mode == _WorkspaceMode.redact) ...<Widget>[
+              _TopBarIconButton(
+                tooltip: 'Save to Photos',
+                onPressed: canExport ? onSaveToPhotos : null,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                tonal: true,
+              ),
+              _TopBarIconButton(
+                tooltip: 'Share',
+                onPressed: canExport ? onShare : null,
+                icon: const Icon(Icons.ios_share),
+                tonal: true,
+              ),
+            ],
           ],
           _TopBarIconButton(
-            tooltip: mode == _WorkspaceMode.redact
-                ? 'Redact details'
-                : 'Metadata details',
+            tooltip: switch (mode) {
+              _WorkspaceMode.redact => 'Image details',
+              _WorkspaceMode.pdf => 'PDF details',
+              _WorkspaceMode.metadata => 'Metadata details',
+            },
             onPressed: onHelp,
-            icon: const Icon(Icons.info_outline),
+            icon: const Icon(CupertinoIcons.info),
           ),
           if (onSettings != null)
             _TopBarIconButton(
               tooltip: 'Settings',
               onPressed: onSettings,
-              icon: const Icon(Icons.tune),
+              icon: const Icon(CupertinoIcons.slider_horizontal_3),
             ),
         ],
       ),
@@ -434,18 +892,19 @@ class _TopBarIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget button;
-    if (filled) {
-      button = IconButton.filled(onPressed: onPressed, icon: icon);
-    } else if (tonal) {
-      button = IconButton.filledTonal(onPressed: onPressed, icon: icon);
-    } else {
-      button = IconButton.outlined(onPressed: onPressed, icon: icon);
-    }
+    final button = _CupertinoIconControl(
+      onPressed: onPressed,
+      icon: icon,
+      emphasis: filled
+          ? _CupertinoControlEmphasis.filled
+          : tonal
+          ? _CupertinoControlEmphasis.tonal
+          : _CupertinoControlEmphasis.outlined,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(left: 7),
-      child: Tooltip(message: tooltip, child: button),
+      child: _CupertinoTooltip(message: tooltip, child: button),
     );
   }
 }
@@ -463,7 +922,7 @@ class _ModeSwitcherBand extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
+        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
       ),
       child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
     );
@@ -478,26 +937,469 @@ class _ModeSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _CupertinoSegmentedControl<_WorkspaceMode>(
+      selected: mode,
+      values: _WorkspaceMode.values,
+      labelFor: (mode) => switch (mode) {
+        _WorkspaceMode.redact => 'Image',
+        _WorkspaceMode.pdf => 'PDF',
+        _WorkspaceMode.metadata => 'Metadata',
+      },
+      cupertinoIconFor: (mode) => switch (mode) {
+        _WorkspaceMode.redact => CupertinoIcons.photo,
+        _WorkspaceMode.pdf => CupertinoIcons.doc_text,
+        _WorkspaceMode.metadata => CupertinoIcons.sparkles,
+      },
+      onChanged: onModeChanged,
+    );
+  }
+}
+
+enum _CupertinoControlEmphasis { outlined, tonal, filled }
+
+class _CupertinoSegmentedControl<T extends Object> extends StatelessWidget {
+  const _CupertinoSegmentedControl({
+    required this.selected,
+    required this.values,
+    required this.labelFor,
+    required this.onChanged,
+    this.cupertinoIconFor,
+  });
+
+  final T selected;
+  final List<T> values;
+  final String Function(T value) labelFor;
+  final IconData? Function(T value)? cupertinoIconFor;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      child: SegmentedButton<_WorkspaceMode>(
-        showSelectedIcon: false,
-        segments: const <ButtonSegment<_WorkspaceMode>>[
-          ButtonSegment<_WorkspaceMode>(
-            value: _WorkspaceMode.redact,
-            icon: Icon(Icons.crop_square),
-            label: Text('Redact'),
-          ),
-          ButtonSegment<_WorkspaceMode>(
-            value: _WorkspaceMode.metadata,
-            icon: Icon(Icons.cleaning_services_outlined),
-            label: Text('Metadata'),
-          ),
-        ],
-        selected: <_WorkspaceMode>{mode},
-        onSelectionChanged: (modes) => onModeChanged(modes.single),
+      child: CupertinoSlidingSegmentedControl<T>(
+        groupValue: selected,
+        padding: const EdgeInsets.all(3),
+        backgroundColor: redactKitSubtleBorderColor,
+        thumbColor: Colors.white,
+        children: <T, Widget>{
+          for (final value in values)
+            value: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: _CupertinoSegmentContent(
+                icon: cupertinoIconFor?.call(value),
+                label: labelFor(value),
+                selected: value == selected,
+                selectedColor: redactKitAccentColor,
+              ),
+            ),
+        },
+        onValueChanged: (value) {
+          if (value == null) return;
+          onChanged(value);
+        },
       ),
     );
+  }
+}
+
+class _CupertinoSegmentContent extends StatelessWidget {
+  const _CupertinoSegmentContent({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.selectedColor,
+  });
+
+  final IconData? icon;
+  final String label;
+  final bool selected;
+  final Color selectedColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? selectedColor : redactKitMutedTextColor;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (icon != null) ...<Widget>[
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CupertinoActionButton extends StatelessWidget {
+  const _CupertinoActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    required this.emphasis,
+  });
+
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final String label;
+  final _CupertinoControlEmphasis emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final foreground = enabled
+        ? switch (emphasis) {
+            _CupertinoControlEmphasis.filled => Colors.white,
+            _ => redactKitAccentColor,
+          }
+        : redactKitDisabledColor;
+    final background = switch (emphasis) {
+      _CupertinoControlEmphasis.filled =>
+        enabled ? redactKitAccentColor : redactKitBorderColor,
+      _CupertinoControlEmphasis.tonal =>
+        enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
+      _CupertinoControlEmphasis.outlined => Colors.white,
+    };
+    final borderColor = switch (emphasis) {
+      _CupertinoControlEmphasis.filled => Colors.transparent,
+      _CupertinoControlEmphasis.tonal => Colors.transparent,
+      _CupertinoControlEmphasis.outlined =>
+        enabled ? redactKitBorderColor : redactKitSubtleBorderColor,
+    };
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return CupertinoButton(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          onPressed: onPressed,
+          child: Container(
+            constraints: BoxConstraints(
+              minHeight: 40,
+              minWidth: constraints.hasBoundedWidth ? constraints.maxWidth : 0,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: borderColor),
+            ),
+            child: IconTheme.merge(
+              data: IconThemeData(color: foreground, size: 18),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w700,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: constraints.hasBoundedWidth
+                      ? MainAxisSize.max
+                      : MainAxisSize.min,
+                  children: <Widget>[
+                    icon,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CupertinoIconControl extends StatelessWidget {
+  const _CupertinoIconControl({
+    required this.onPressed,
+    required this.icon,
+    required this.emphasis,
+  });
+
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final _CupertinoControlEmphasis emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final foreground = enabled
+        ? switch (emphasis) {
+            _CupertinoControlEmphasis.filled => Colors.white,
+            _ => redactKitAccentColor,
+          }
+        : redactKitDisabledColor;
+    final background = switch (emphasis) {
+      _CupertinoControlEmphasis.filled =>
+        enabled ? redactKitAccentColor : redactKitBorderColor,
+      _CupertinoControlEmphasis.tonal =>
+        enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
+      _CupertinoControlEmphasis.outlined => Colors.white,
+    };
+    final borderColor = emphasis == _CupertinoControlEmphasis.outlined
+        ? redactKitBorderColor
+        : Colors.transparent;
+
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      onPressed: onPressed,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor),
+        ),
+        child: IconTheme.merge(
+          data: IconThemeData(color: foreground, size: 20),
+          child: icon,
+        ),
+      ),
+    );
+  }
+}
+
+class _PdfPageNavigationStrip extends StatelessWidget {
+  const _PdfPageNavigationStrip({
+    required this.currentPage,
+    required this.pageCount,
+    required this.isBusy,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPageChanged,
+  });
+
+  final int currentPage;
+  final int pageCount;
+  final bool isBusy;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
+      ),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _CupertinoActionButton(
+                  onPressed: !isBusy && currentPage > 1 ? onPrevious : null,
+                  icon: const Icon(Icons.chevron_left),
+                  label: 'Prev',
+                  emphasis: _CupertinoControlEmphasis.outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 96,
+                child: _PdfPageNumberField(
+                  currentPage: currentPage,
+                  pageCount: pageCount,
+                  isBusy: isBusy,
+                  onPageChanged: onPageChanged,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _CupertinoActionButton(
+                  onPressed: !isBusy && currentPage < pageCount ? onNext : null,
+                  icon: const Icon(Icons.chevron_right),
+                  label: 'Next',
+                  emphasis: _CupertinoControlEmphasis.outlined,
+                ),
+              ),
+            ],
+          ),
+          if (pageCount > 1) ...<Widget>[
+            const SizedBox(height: 6),
+            _PdfPageSlider(
+              currentPage: currentPage,
+              pageCount: pageCount,
+              isBusy: isBusy,
+              onPageChanged: onPageChanged,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PdfPageNumberField extends StatefulWidget {
+  const _PdfPageNumberField({
+    required this.currentPage,
+    required this.pageCount,
+    required this.isBusy,
+    required this.onPageChanged,
+  });
+
+  final int currentPage;
+  final int pageCount;
+  final bool isBusy;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  State<_PdfPageNumberField> createState() => _PdfPageNumberFieldState();
+}
+
+class _PdfPageNumberFieldState extends State<_PdfPageNumberField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.currentPage.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _PdfPageNumberField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPage != widget.currentPage &&
+        _controller.text != widget.currentPage.toString()) {
+      _controller.text = widget.currentPage.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoTextField(
+      controller: _controller,
+      enabled: !widget.isBusy && widget.pageCount > 0,
+      textAlign: TextAlign.center,
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.go,
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.digitsOnly,
+      ],
+      placeholder: 'Page',
+      suffix: Padding(
+        padding: const EdgeInsets.only(right: 9),
+        child: Text(
+          '/ ${widget.pageCount}',
+          style: const TextStyle(color: redactKitMutedTextColor, fontSize: 12),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: redactKitBorderColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      onSubmitted: _submit,
+    );
+  }
+
+  void _submit(String value) {
+    final requested = int.tryParse(value);
+    if (requested == null || widget.pageCount <= 0) {
+      _controller.text = widget.currentPage.toString();
+      return;
+    }
+
+    final page = requested.clamp(1, widget.pageCount).toInt();
+    _controller.text = page.toString();
+    widget.onPageChanged(page);
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+}
+
+class _PdfPageSlider extends StatefulWidget {
+  const _PdfPageSlider({
+    required this.currentPage,
+    required this.pageCount,
+    required this.isBusy,
+    required this.onPageChanged,
+  });
+
+  final int currentPage;
+  final int pageCount;
+  final bool isBusy;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  State<_PdfPageSlider> createState() => _PdfPageSliderState();
+}
+
+class _PdfPageSliderState extends State<_PdfPageSlider> {
+  late double _value;
+  int? _lastRequestedPage;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.currentPage.toDouble();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PdfPageSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPage != widget.currentPage) {
+      _value = widget.currentPage.toDouble();
+      _lastRequestedPage = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoSlider(
+      min: 1,
+      max: widget.pageCount.toDouble(),
+      divisions: widget.pageCount > 1 ? widget.pageCount - 1 : null,
+      value: _value.clamp(1, widget.pageCount.toDouble()),
+      onChanged: widget.pageCount <= 1 ? null : _previewPage,
+      onChangeEnd: widget.pageCount <= 1
+          ? null
+          : (value) => _requestPage(value.round()),
+    );
+  }
+
+  void _previewPage(double value) {
+    setState(() => _value = value);
+    _requestPage(value.round());
+  }
+
+  void _requestPage(int page) {
+    if (page == widget.currentPage || page == _lastRequestedPage) return;
+
+    _lastRequestedPage = page;
+    widget.onPageChanged(page);
   }
 }
 
@@ -507,6 +1409,7 @@ class _MobileTopBar extends StatelessWidget {
     required this.status,
     required this.redactionCount,
     required this.hasMetadataInput,
+    required this.hasPdf,
     required this.onHelp,
     required this.onSettings,
   });
@@ -515,23 +1418,26 @@ class _MobileTopBar extends StatelessWidget {
   final String status;
   final int redactionCount;
   final bool hasMetadataInput;
+  final bool hasPdf;
   final VoidCallback onHelp;
   final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
-    final summary = mode == _WorkspaceMode.redact
-        ? '$redactionCount redaction${redactionCount == 1 ? '' : 's'}'
-        : hasMetadataInput
-        ? 'Input selected'
-        : 'No input';
+    final summary = switch (mode) {
+      _WorkspaceMode.redact =>
+        '$redactionCount redaction${redactionCount == 1 ? '' : 's'}',
+      _WorkspaceMode.pdf => hasPdf ? '$redactionCount on page' : 'No PDF',
+      _WorkspaceMode.metadata =>
+        hasMetadataInput ? 'Input selected' : 'No input',
+    };
 
     return Container(
       constraints: const BoxConstraints(minHeight: 72),
       padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
+        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
       ),
       child: Row(
         children: <Widget>[
@@ -553,7 +1459,7 @@ class _MobileTopBar extends StatelessWidget {
                         status,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF637066),
+                          color: redactKitMutedTextColor,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -566,19 +1472,21 @@ class _MobileTopBar extends StatelessWidget {
               ],
             ),
           ),
-          Tooltip(
+          _CupertinoTooltip(
             message: 'Details',
-            child: IconButton(
+            child: _CupertinoIconControl(
               onPressed: onHelp,
-              icon: const Icon(Icons.info_outline),
+              icon: const Icon(CupertinoIcons.info),
+              emphasis: _CupertinoControlEmphasis.outlined,
             ),
           ),
           if (onSettings != null)
-            Tooltip(
+            _CupertinoTooltip(
               message: 'Settings',
-              child: IconButton(
+              child: _CupertinoIconControl(
                 onPressed: onSettings,
-                icon: const Icon(Icons.tune),
+                icon: const Icon(CupertinoIcons.slider_horizontal_3),
+                emphasis: _CupertinoControlEmphasis.outlined,
               ),
             ),
         ],
@@ -596,9 +1504,9 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF1ED),
+        color: redactKitSystemGreenFillColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFDCE2DC)),
+        border: Border.all(color: redactKitBorderColor),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -607,7 +1515,7 @@ class _StatusPill extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            color: Color(0xFF176B5B),
+            color: redactKitAccentColor,
             fontSize: 11,
             fontWeight: FontWeight.w800,
           ),
@@ -628,6 +1536,7 @@ class _MobileBottomBar extends StatelessWidget {
     required this.onUndo,
     required this.onClear,
     required this.onExportOptions,
+    this.pdfMode = false,
   });
 
   final bool canUndo;
@@ -639,6 +1548,7 @@ class _MobileBottomBar extends StatelessWidget {
   final VoidCallback onUndo;
   final VoidCallback onClear;
   final VoidCallback onExportOptions;
+  final bool pdfMode;
 
   @override
   Widget build(BuildContext context) {
@@ -647,10 +1557,10 @@ class _MobileBottomBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFDCE2DC))),
+        border: Border(top: BorderSide(color: redactKitBorderColor)),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Color(0x1A19251F),
+            color: Color(0x1A000000),
             blurRadius: 18,
             offset: Offset(0, -6),
           ),
@@ -659,15 +1569,16 @@ class _MobileBottomBar extends StatelessWidget {
       child: Row(
         children: <Widget>[
           _MobileToolbarItem(
-            icon: Icons.folder_open,
-            label: 'Files',
+            icon: pdfMode ? Icons.picture_as_pdf_outlined : Icons.folder_open,
+            label: pdfMode ? 'PDF' : 'Files',
             onPressed: isOpening ? null : onOpen,
           ),
-          _MobileToolbarItem(
-            icon: Icons.photo_library_outlined,
-            label: 'Photos',
-            onPressed: isOpening ? null : onOpenPhotos,
-          ),
+          if (!pdfMode)
+            _MobileToolbarItem(
+              icon: Icons.photo_library_outlined,
+              label: 'Photos',
+              onPressed: isOpening ? null : onOpenPhotos,
+            ),
           _MobileToolbarItem(
             icon: Icons.undo,
             label: 'Undo',
@@ -679,8 +1590,10 @@ class _MobileBottomBar extends StatelessWidget {
             onPressed: canClear ? onClear : null,
           ),
           _MobileToolbarItem(
-            icon: canExport ? Icons.save_alt : Icons.tune,
-            label: 'Export',
+            icon: canExport
+                ? Icons.save_alt
+                : CupertinoIcons.slider_horizontal_3,
+            label: pdfMode ? 'Save' : 'Export',
             onPressed: onExportOptions,
             primary: canExport,
           ),
@@ -705,47 +1618,54 @@ class _MobileToolbarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null;
     final foreground = primary && enabled
         ? Colors.white
-        : colorScheme.onSurface;
+        : enabled
+        ? redactKitPrimaryTextColor
+        : redactKitDisabledColor;
     final background = primary && enabled
-        ? colorScheme.primary
+        ? redactKitAccentColor
         : Colors.transparent;
 
     return Expanded(
-      child: Tooltip(
+      child: _CupertinoTooltip(
         message: label,
-        child: TextButton(
+        child: CupertinoButton(
           onPressed: onPressed,
-          style: TextButton.styleFrom(
-            foregroundColor: foreground,
-            backgroundColor: background,
-            disabledForegroundColor: const Color(0xFF9AA49C),
-            minimumSize: const Size(48, 60),
-            padding: EdgeInsets.zero,
-            shape: RoundedRectangleBorder(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 60),
+            decoration: BoxDecoration(
+              color: background,
               borderRadius: BorderRadius.circular(8),
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, size: 22),
-              const SizedBox(height: 3),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
+            child: IconTheme.merge(
+              data: IconThemeData(color: foreground, size: 22),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(color: foreground),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(icon, size: 22),
+                    const SizedBox(height: 3),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -754,26 +1674,23 @@ class _MobileToolbarItem extends StatelessWidget {
 }
 
 void _showExportSheet(BuildContext context) {
-  showModalBottomSheet<void>(
+  showCupertinoModalPopup<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
     builder: (context) {
-      return Consumer(
-        builder: (context, ref, _) {
-          final state = ref.watch(redactionControllerProvider);
-          final controller = ref.read(redactionControllerProvider.notifier);
-          final image = state.image;
-          final canExport = state.hasImage && !state.isExporting;
+      return _CupertinoSheetSurface(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final state = ref.watch(redactionControllerProvider);
+            final controller = ref.read(redactionControllerProvider.notifier);
+            final image = state.image;
+            final canExport = state.hasImage && !state.isExporting;
 
-          return SafeArea(
-            top: false,
-            child: ConstrainedBox(
+            return ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.sizeOf(context).height * 0.86,
               ),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,11 +1706,12 @@ void _showExportSheet(BuildContext context) {
                             ),
                           ),
                         ),
-                        Tooltip(
+                        _CupertinoTooltip(
                           message: 'Close',
-                          child: IconButton(
+                          child: _CupertinoIconControl(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close),
+                            icon: const Icon(CupertinoIcons.xmark),
+                            emphasis: _CupertinoControlEmphasis.outlined,
                           ),
                         ),
                       ],
@@ -833,20 +1751,19 @@ void _showExportSheet(BuildContext context) {
                     ),
                     const _MetricRow(label: 'Cover', value: '100% opaque'),
                     const SizedBox(height: 22),
-                    const Divider(height: 1),
+                    const _DividerLine(),
                     const SizedBox(height: 22),
                     const _PanelHeading('Format'),
                     _ExportFormatPicker(
                       selected: state.exportFormat,
                       onChanged: controller.setExportFormat,
                     ),
-                    if (state.exportFormat == ExportFormat.jpeg) ...<Widget>[
-                      const SizedBox(height: 18),
-                      _JpegQualityPresetPicker(
-                        selected: state.jpegQualityPreset,
-                        onChanged: controller.setJpegQualityPreset,
-                      ),
-                    ],
+                    const SizedBox(height: 18),
+                    _ImageQualityPicker(
+                      format: state.exportFormat,
+                      selected: state.jpegQualityPreset,
+                      onChanged: controller.setJpegQualityPreset,
+                    ),
                     const SizedBox(height: 18),
                     _KeepFilenamesToggle(
                       label: 'Keep filename',
@@ -857,7 +1774,7 @@ void _showExportSheet(BuildContext context) {
                     Row(
                       children: <Widget>[
                         Expanded(
-                          child: FilledButton.icon(
+                          child: _CupertinoActionButton(
                             onPressed: canExport
                                 ? () {
                                     Navigator.of(context).pop();
@@ -867,22 +1784,18 @@ void _showExportSheet(BuildContext context) {
                             icon: state.isExporting
                                 ? const SizedBox.square(
                                     dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                                    child: CupertinoActivityIndicator(
                                       color: Colors.white,
                                     ),
                                   )
                                 : const Icon(Icons.save_alt),
-                            label: const Text(
-                              'Save to Files',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            label: 'Save to Files',
+                            emphasis: _CupertinoControlEmphasis.filled,
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: FilledButton.tonalIcon(
+                          child: _CupertinoActionButton(
                             onPressed: canExport
                                 ? () {
                                     Navigator.of(context).pop();
@@ -892,11 +1805,8 @@ void _showExportSheet(BuildContext context) {
                             icon: const Icon(
                               Icons.add_photo_alternate_outlined,
                             ),
-                            label: const Text(
-                              'Save to Photos',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            label: 'Save to Photos',
+                            emphasis: _CupertinoControlEmphasis.tonal,
                           ),
                         ),
                       ],
@@ -904,7 +1814,7 @@ void _showExportSheet(BuildContext context) {
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.tonalIcon(
+                      child: _CupertinoActionButton(
                         onPressed: canExport
                             ? () {
                                 Navigator.of(context).pop();
@@ -912,15 +1822,135 @@ void _showExportSheet(BuildContext context) {
                               }
                             : null,
                         icon: const Icon(Icons.ios_share),
-                        label: const Text('Share'),
+                        label: 'Share',
+                        emphasis: _CupertinoControlEmphasis.tonal,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
+void _showPdfExportSheet(BuildContext context) {
+  showCupertinoModalPopup<void>(
+    context: context,
+    builder: (context) {
+      return _CupertinoSheetSurface(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final state = ref.watch(redactionControllerProvider);
+            final controller = ref.read(redactionControllerProvider.notifier);
+            final canExport = state.hasPdf && !state.isExporting;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Text(
+                          'PDF Export',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      _CupertinoTooltip(
+                        message: 'Close',
+                        child: _CupertinoIconControl(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(CupertinoIcons.xmark),
+                          emphasis: _CupertinoControlEmphasis.outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const _PanelHeading('Tool'),
+                  Row(
+                    children: <Widget>[
+                      _ColorSwatchButton(
+                        color: const Color(0xFF050505),
+                        selected:
+                            state.redactionColor == const Color(0xFF050505),
+                        label: 'Black',
+                        onTap: () =>
+                            controller.selectColor(const Color(0xFF050505)),
+                      ),
+                      const SizedBox(width: 10),
+                      _ColorSwatchButton(
+                        color: Colors.white,
+                        selected: state.redactionColor == Colors.white,
+                        label: 'White',
+                        onTap: () => controller.selectColor(Colors.white),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const _PanelHeading('PDF'),
+                  _MetricRow(
+                    label: 'Pages',
+                    value: state.hasPdf ? '${state.pdfPageCount}' : 'None',
+                  ),
+                  _MetricRow(
+                    label: 'Current page',
+                    value: state.hasPdf ? '${state.pdfCurrentPage}' : 'None',
+                  ),
+                  _MetricRow(
+                    label: 'Redactions',
+                    value: '${state.pdfRedactionCount}',
+                  ),
+                  const SizedBox(height: 18),
+                  _PdfQualityPresetPicker(
+                    selected: state.pdfQualityPreset,
+                    onChanged: controller.setPdfQualityPreset,
+                  ),
+                  const SizedBox(height: 18),
+                  _KeepFilenamesToggle(
+                    label: 'Keep filename',
+                    value: state.preservePdfExportFileName,
+                    onChanged: controller.setPreservePdfExportFileName,
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: canExport
+                              ? () {
+                                  Navigator.of(context).pop();
+                                  controller.exportPdf();
+                                }
+                              : null,
+                          icon: state.isExporting
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CupertinoActivityIndicator(
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.save_alt),
+                          label: 'Save Redacted PDF',
+                          emphasis: _CupertinoControlEmphasis.filled,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       );
     },
   );
@@ -933,6 +1963,13 @@ void _showRedactDetails(BuildContext context) {
   );
 }
 
+void _showPdfDetails(BuildContext context) {
+  _showDetails(
+    context,
+    _PdfDetailsContent(onClose: () => Navigator.of(context).pop()),
+  );
+}
+
 void _showMetadataDetails(BuildContext context) {
   _showDetails(
     context,
@@ -942,12 +1979,9 @@ void _showMetadataDetails(BuildContext context) {
 
 void _showDetails(BuildContext context, Widget content) {
   if (MediaQuery.sizeOf(context).width < 600) {
-    showModalBottomSheet<void>(
+    showCupertinoModalPopup<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        top: false,
+      builder: (context) => _CupertinoSheetSurface(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.86,
@@ -959,18 +1993,60 @@ void _showDetails(BuildContext context, Widget content) {
     return;
   }
 
-  showDialog<void>(
+  showCupertinoDialog<void>(
     context: context,
-    builder: (context) => Dialog(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 560,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+    builder: (context) => Center(
+      child: CupertinoPopupSurface(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 560,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+          ),
+          child: content,
         ),
-        child: content,
       ),
     ),
   );
+}
+
+class _CupertinoSheetSurface extends StatelessWidget {
+  const _CupertinoSheetSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPopupSurface(child: SafeArea(top: false, child: child));
+  }
+}
+
+class _DividerLine extends StatelessWidget {
+  const _DividerLine();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 1,
+      child: ColoredBox(color: redactKitBorderColor),
+    );
+  }
+}
+
+class _CupertinoTooltip extends StatelessWidget {
+  const _CupertinoTooltip({
+    required this.message,
+    required this.child,
+    this.waitDuration,
+  });
+
+  final String message;
+  final Widget child;
+  final Duration? waitDuration;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(label: message, child: child);
+  }
 }
 
 class _RedactDetailsContent extends StatelessWidget {
@@ -990,15 +2066,16 @@ class _RedactDetailsContent extends StatelessWidget {
             children: <Widget>[
               const Expanded(
                 child: Text(
-                  'Privacy & Export',
+                  'Image Privacy',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
               ),
-              Tooltip(
+              _CupertinoTooltip(
                 message: 'Close',
-                child: IconButton(
+                child: _CupertinoIconControl(
                   onPressed: onClose,
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(CupertinoIcons.xmark),
+                  emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
             ],
@@ -1020,7 +2097,7 @@ class _RedactDetailsContent extends StatelessWidget {
             icon: Icons.cleaning_services_outlined,
             title: 'Metadata removed',
             body:
-                'Redact export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
+                'Image export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
           ),
           const _PrivacyPoint(
             icon: Icons.badge_outlined,
@@ -1029,10 +2106,72 @@ class _RedactDetailsContent extends StatelessWidget {
                 'Exports start with a generic name. The Keep filename option only preserves the visible file name, not image metadata.',
           ),
           const _PrivacyPoint(
-            icon: Icons.tune_outlined,
+            icon: CupertinoIcons.slider_horizontal_3,
             title: 'Format choice',
             body:
                 'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PdfDetailsContent extends StatelessWidget {
+  const _PdfDetailsContent({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'PDF Privacy',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+              ),
+              _CupertinoTooltip(
+                message: 'Close',
+                child: _CupertinoIconControl(
+                  onPressed: onClose,
+                  icon: const Icon(CupertinoIcons.xmark),
+                  emphasis: _CupertinoControlEmphasis.outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const _PrivacyPoint(
+            icon: Icons.picture_as_pdf_outlined,
+            title: 'Flattened PDF export',
+            body:
+                'Each PDF page is rendered as an image, redaction boxes are burned into that image, and a new PDF is generated from the cleaned pages. The exported page size follows the original PDF page size.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.layers_clear_outlined,
+            title: 'Original PDF structure removed',
+            body:
+                'The clean PDF does not copy the original text layer, annotations, forms, links, embedded files, hidden OCR text, or original document metadata.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.cleaning_services_outlined,
+            title: 'Metadata-only PDFs',
+            body:
+                'Metadata Only can flatten one PDF without drawing boxes. It removes original PDF metadata and hidden document structure, but text selection and search are not preserved.',
+          ),
+          const _PrivacyPoint(
+            icon: Icons.search_off_outlined,
+            title: 'Tradeoff',
+            body:
+                'Flattened PDFs are safer and simpler to verify, but the exported document behaves like scanned pages. Text outside redactions is visible, but not selectable or searchable.',
           ),
         ],
       ),
@@ -1057,15 +2196,16 @@ class _MetadataDetailsContent extends StatelessWidget {
             children: <Widget>[
               const Expanded(
                 child: Text(
-                  'Clean Metadata',
+                  'Metadata Only',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
               ),
-              Tooltip(
+              _CupertinoTooltip(
                 message: 'Close',
-                child: IconButton(
+                child: _CupertinoIconControl(
                   onPressed: onClose,
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(CupertinoIcons.xmark),
+                  emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
             ],
@@ -1073,9 +2213,9 @@ class _MetadataDetailsContent extends StatelessWidget {
           const SizedBox(height: 10),
           const _PrivacyPoint(
             icon: Icons.photo_library_outlined,
-            title: 'Batch input',
+            title: 'Image and PDF input',
             body:
-                'Choose one image, multiple images, a folder on desktop, or Photos on mobile. This mode does not draw redaction boxes.',
+                'Choose files or a folder from one input button. Files can be images or PDFs, and folder input scans supported images and PDFs inside it. This mode does not draw redaction boxes.',
           ),
           const _PrivacyPoint(
             icon: Icons.auto_fix_high_outlined,
@@ -1099,7 +2239,7 @@ class _MetadataDetailsContent extends StatelessWidget {
             icon: Icons.folder_copy_outlined,
             title: 'Output',
             body:
-                'Single images and multi-image picks save directly into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed and writes only cleaned images into it.',
+                'Images and PDFs save into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed.',
           ),
         ],
       ),
@@ -1125,7 +2265,7 @@ class _PrivacyPoint extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 24),
+          Icon(icon, color: redactKitAccentColor, size: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1142,7 +2282,7 @@ class _PrivacyPoint extends StatelessWidget {
                 Text(
                   body,
                   style: const TextStyle(
-                    color: Color(0xFF637066),
+                    color: redactKitMutedTextColor,
                     height: 1.35,
                   ),
                 ),
@@ -1165,6 +2305,14 @@ class _MetadataCleanerView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
     final canClean = !state.isOpening && !state.isExporting;
+    if (desktop) {
+      return _DesktopMetadataCleanerView(
+        state: state,
+        controller: controller,
+        canClean: canClean,
+      );
+    }
+
     if (!desktop) {
       return _MobileMetadataCleanerView(
         state: state,
@@ -1173,184 +2321,647 @@ class _MetadataCleanerView extends ConsumerWidget {
       );
     }
 
-    final content = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: desktop ? 720 : double.infinity),
+    return const SizedBox.shrink();
+  }
+}
+
+String _metadataExportFormatDescription(RedactionState state) {
+  if (!state.hasMetadataInput) {
+    return 'Pick files or a folder first. The export controls will match the selected input types.';
+  }
+  if (state.metadataHasImages && state.metadataHasPdfs) {
+    return 'Images use the image format and quality settings. PDFs are flattened with the PDF quality setting.';
+  }
+  if (state.metadataHasImages) {
+    return 'Images use the selected PNG/JPEG format and image quality.';
+  }
+  if (state.metadataHasPdfs) {
+    return 'PDFs are flattened with the selected PDF quality.';
+  }
+  return 'No supported files selected.';
+}
+
+class _DesktopMetadataCleanerView extends StatelessWidget {
+  const _DesktopMetadataCleanerView({
+    required this.state,
+    required this.controller,
+    required this.canClean,
+  });
+
+  final RedactionState state;
+  final RedactionController controller;
+  final bool canClean;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = _MetadataResultSummaryData.fromStatus(state.status);
+    final showImageExportControls =
+        state.hasMetadataInput && state.metadataHasImages;
+    final showPdfExportControls =
+        state.hasMetadataInput && state.metadataHasPdfs;
+
+    return ColoredBox(
+      color: redactKitBackgroundColor,
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          desktop ? 28 : 20,
-          desktop ? 28 : 20,
-          desktop ? 28 : 20,
-          28,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Clean Metadata',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                Row(
+                  children: <Widget>[
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Metadata Only',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'Clean image or PDF metadata without drawing redaction boxes.',
+                            style: TextStyle(
+                              color: redactKitMutedTextColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _StatusPill(
+                      text: state.hasMetadataInput
+                          ? '${state.metadataInputCount} selected'
+                          : 'No input',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      flex: 7,
+                      child: Column(
+                        children: <Widget>[
+                          _DesktopMetadataPanel(
+                            title: 'Input',
+                            icon: Icons.add_photo_alternate_outlined,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                _MetadataInputChooserButton(
+                                  onPressed: canClean
+                                      ? controller.chooseMetadataFilesOrFolder
+                                      : null,
+                                  loading: state.isOpening,
+                                ),
+                                const SizedBox(height: 14),
+                                _MetadataInputSummary(
+                                  label:
+                                      state.metadataInputLabel ??
+                                      'No input selected',
+                                  description:
+                                      state.metadataInputDescription ??
+                                      'Choose files or a folder containing images and PDFs.',
+                                  selected: state.hasMetadataInput,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _DesktopMetadataPanel(
+                            title: 'Output',
+                            icon: Icons.folder_open,
+                            child: _MetadataOutputFolderPicker(
+                              displayName:
+                                  state.metadataOutputDirectoryDisplayName ??
+                                  'Choose input to preview output',
+                              path: state.metadataOutputDirectoryPath,
+                              onChoose: canClean && state.hasMetadataInput
+                                  ? controller.chooseMetadataOutputFolder
+                                  : null,
+                              onOpen:
+                                  canClean &&
+                                      state.metadataOutputDirectoryPath != null
+                                  ? controller.openMetadataOutputFolder
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 340,
+                      child: Column(
+                        children: <Widget>[
+                          _DesktopMetadataPanel(
+                            title: 'Export Format',
+                            icon: CupertinoIcons.slider_horizontal_3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                if (!state.hasMetadataInput)
+                                  const Text(
+                                    'Choose input to show matching export controls.',
+                                    style: TextStyle(
+                                      color: redactKitMutedTextColor,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                if (showImageExportControls) ...<Widget>[
+                                  _ExportFormatPicker(
+                                    selected: state.exportFormat,
+                                    onChanged: controller.setExportFormat,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _ImageQualityPicker(
+                                    format: state.exportFormat,
+                                    selected: state.jpegQualityPreset,
+                                    onChanged: controller.setJpegQualityPreset,
+                                  ),
+                                ],
+                                if (showPdfExportControls) ...<Widget>[
+                                  if (showImageExportControls)
+                                    const SizedBox(height: 16),
+                                  _PdfQualityPresetPicker(
+                                    selected: state.pdfQualityPreset,
+                                    onChanged: controller.setPdfQualityPreset,
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                _KeepFilenamesToggle(
+                                  label: 'Keep filenames',
+                                  value: state.preserveMetadataCleanFileNames,
+                                  onChanged: canClean
+                                      ? controller
+                                            .setPreserveMetadataCleanFileNames
+                                      : null,
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  _metadataExportFormatDescription(state),
+                                  style: TextStyle(
+                                    color: redactKitMutedTextColor,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: _CupertinoActionButton(
+                              onPressed: canClean && state.hasMetadataInput
+                                  ? controller.startMetadataClean
+                                  : null,
+                              icon: state.isExporting
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CupertinoActivityIndicator(
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.play_arrow),
+                              label: 'Start',
+                              emphasis: _CupertinoControlEmphasis.filled,
+                            ),
+                          ),
+                          if (state.isCleaningMetadata) ...<Widget>[
+                            const SizedBox(height: 14),
+                            _MetadataProgressBanner(
+                              progress: state.metadataCleanProgress,
+                              status: state.status,
+                            ),
+                          ],
+                          if (result != null) ...<Widget>[
+                            const SizedBox(height: 14),
+                            _MetadataResultSummaryCard(
+                              result: result,
+                              outputPath: state.metadataOutputDirectoryPath,
+                              onOpenFolder:
+                                  state.metadataOutputDirectoryPath != null
+                                  ? controller.openMetadataOutputFolder
+                                  : null,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopMetadataPanel extends StatelessWidget {
+  const _DesktopMetadataPanel({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 18, color: redactKitAccentColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _MetadataInputChooserButton extends StatelessWidget {
+  const _MetadataInputChooserButton({
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final content = Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 86),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: enabled ? redactKitAccentColor : redactKitBorderColor,
+          width: enabled ? 1.4 : 1,
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: enabled ? redactKitAccentColor : redactKitBorderColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SizedBox.square(
+              dimension: 44,
+              child: Center(
+                child: loading
+                    ? const SizedBox.square(
+                        dimension: 19,
+                        child: CupertinoActivityIndicator(color: Colors.white),
+                      )
+                    : const Icon(
+                        CupertinoIcons.folder_badge_plus,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  'Choose Files or Folder',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Files and folders supported. Files can be images or PDFs.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: redactKitMutedTextColor,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            const _PanelHeading('Input'),
-            if (desktop)
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: <Widget>[
-                  FilledButton.icon(
-                    onPressed: canClean
-                        ? controller.chooseMetadataImageFromFiles
-                        : null,
-                    icon: state.isOpening
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.image_outlined),
-                    label: const Text('Choose Image'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: canClean
-                        ? controller.chooseMetadataImagesFromFiles
-                        : null,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Choose Images'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: canClean
-                        ? controller.chooseMetadataFolder
-                        : null,
-                    icon: const Icon(Icons.folder_copy_outlined),
-                    label: const Text('Choose Folder'),
-                  ),
-                ],
-              )
-            else
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: canClean
-                          ? controller.chooseMetadataImagesFromFiles
-                          : null,
-                      icon: const Icon(Icons.folder_copy_outlined),
-                      label: const Text('Files'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: canClean
-                          ? controller.chooseMetadataImagesFromPhotos
-                          : null,
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: const Text('Photos'),
-                    ),
-                  ),
-                ],
-              ),
-            const SizedBox(height: 10),
-            _KeepFilenamesToggle(
-              label: 'Keep filenames',
-              value: state.preserveMetadataCleanFileNames,
-              onChanged: canClean
-                  ? controller.setPreserveMetadataCleanFileNames
-                  : null,
-            ),
-            const SizedBox(height: 14),
-            _MetadataInputSummary(
-              label: state.metadataInputLabel ?? 'No input selected',
-              description:
-                  state.metadataInputDescription ??
-                  'Choose an image, multiple images, or a folder.',
-              selected: state.hasMetadataInput,
-            ),
-            const SizedBox(height: 26),
-            const Divider(height: 1),
-            const SizedBox(height: 24),
-            const _PanelHeading('Output'),
-            _MetadataOutputFolderPicker(
-              displayName:
-                  state.metadataOutputDirectoryDisplayName ??
-                  (desktop
-                      ? 'Choose input to preview output'
-                      : 'Output: app Cleaned folder'),
-              path: state.metadataOutputDirectoryPath,
-              onChoose: desktop && canClean && state.hasMetadataInput
-                  ? controller.chooseMetadataOutputFolder
-                  : null,
-              onOpen:
-                  desktop &&
-                      canClean &&
-                      state.metadataOutputDirectoryPath != null
-                  ? controller.openMetadataOutputFolder
-                  : null,
-            ),
-            const SizedBox(height: 26),
-            const Divider(height: 1),
-            const SizedBox(height: 24),
-            const _PanelHeading('Format'),
-            _ExportFormatPicker(
-              selected: state.exportFormat,
-              onChanged: controller.setExportFormat,
-            ),
-            if (state.exportFormat == ExportFormat.jpeg) ...<Widget>[
-              const SizedBox(height: 18),
-              _JpegQualityPresetPicker(
-                selected: state.jpegQualityPreset,
-                onChanged: controller.setJpegQualityPreset,
-              ),
-            ],
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: canClean && state.hasMetadataInput
-                    ? controller.startMetadataClean
-                    : null,
-                icon: state.isExporting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.play_arrow),
-                label: const Text('Start'),
-              ),
-            ),
-            if (state.isCleaningMetadata) ...<Widget>[
-              const SizedBox(height: 14),
-              _MetadataProgressBanner(
-                progress: state.metadataCleanProgress,
-                status: state.status,
-              ),
-            ],
-            const SizedBox(height: 14),
-            const Text(
-              'PNG/JPEG keep the same format by stripping metadata directly. Format changes rebuild the visible pixels into a new clean file.',
-              style: TextStyle(color: Color(0xFF637066), height: 1.35),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 10),
+          Icon(
+            CupertinoIcons.chevron_forward,
+            color: enabled ? redactKitAccentColor : redactKitDisabledColor,
+          ),
+        ],
       ),
     );
 
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        onPressed: onPressed,
+        child: content,
+      ),
+    );
+  }
+}
+
+class _MetadataResultSummaryData {
+  const _MetadataResultSummaryData({
+    required this.title,
+    required this.message,
+    required this.tone,
+    required this.savedCount,
+    required this.ignoredCount,
+    required this.failedCount,
+  });
+
+  final String title;
+  final String message;
+  final _NoticeTone tone;
+  final int? savedCount;
+  final int ignoredCount;
+  final int failedCount;
+
+  static _MetadataResultSummaryData? fromStatus(String status) {
+    if (status == 'Saved metadata-clean PDF') {
+      return const _MetadataResultSummaryData(
+        title: 'Last result',
+        message: 'Saved metadata-clean PDF',
+        tone: _NoticeTone.success,
+        savedCount: null,
+        ignoredCount: 0,
+        failedCount: 0,
+      );
+    }
+
+    final successMatch = RegExp(
+      r'^(?:Success: )?cleaned metadata for (\d+) (?:images?|files?) to (.+?)(?: \((.*)\))?$',
+      caseSensitive: false,
+    ).firstMatch(status);
+
+    if (successMatch != null) {
+      final saved = int.tryParse(successMatch.group(1) ?? '');
+      final details = successMatch.group(3) ?? '';
+      final ignored = _detailCount(details, 'ignored');
+      final failed = _detailCount(details, 'failed');
+      final tone = failed > 0 ? _NoticeTone.warning : _NoticeTone.success;
+
+      return _MetadataResultSummaryData(
+        title: failed > 0 ? 'Last result: needs review' : 'Last result',
+        message: status,
+        tone: tone,
+        savedCount: saved,
+        ignoredCount: ignored,
+        failedCount: failed,
+      );
+    }
+
+    if (status.startsWith('Could not clean metadata') ||
+        status.startsWith('Could not create output folder')) {
+      return _MetadataResultSummaryData(
+        title: 'Last result: failed',
+        message: status,
+        tone: _NoticeTone.error,
+        savedCount: 0,
+        ignoredCount: 0,
+        failedCount: 1,
+      );
+    }
+
+    return null;
+  }
+
+  static int _detailCount(String details, String label) {
+    final match = RegExp('(\\d+) $label').firstMatch(details);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+}
+
+class _MetadataResultSummaryCard extends StatelessWidget {
+  const _MetadataResultSummaryCard({
+    required this.result,
+    required this.outputPath,
+    required this.onOpenFolder,
+  });
+
+  final _MetadataResultSummaryData result;
+  final String? outputPath;
+  final VoidCallback? onOpenFolder;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (result.tone) {
+      _NoticeTone.success => redactKitSystemGreenColor,
+      _NoticeTone.warning => redactKitSystemOrangeColor,
+      _NoticeTone.error => redactKitSystemRedColor,
+    };
+    final background = switch (result.tone) {
+      _NoticeTone.success => redactKitSystemGreenFillColor,
+      _NoticeTone.warning => redactKitSystemOrangeFillColor,
+      _NoticeTone.error => redactKitSystemRedFillColor,
+    };
+
     return Container(
       width: double.infinity,
-      color: const Color(0xFFFBFCFA),
-      child: Align(
-        alignment: desktop ? Alignment.topCenter : Alignment.topLeft,
-        child: content,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SizedBox.square(
+                  dimension: 34,
+                  child: Icon(
+                    result.tone == _NoticeTone.error
+                        ? Icons.error_outline
+                        : result.tone == _NoticeTone.warning
+                        ? CupertinoIcons.info
+                        : Icons.check_circle,
+                    color: accent,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  result.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              if (result.savedCount != null)
+                _ResultCountPill(
+                  label: 'Cleaned',
+                  value: result.savedCount.toString(),
+                ),
+              _ResultCountPill(
+                label: 'Ignored',
+                value: result.ignoredCount.toString(),
+              ),
+              _ResultCountPill(
+                label: 'Failed',
+                value: result.failedCount.toString(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            result.message,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: redactKitMutedTextColor,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (outputPath != null || onOpenFolder != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                if (outputPath != null)
+                  Expanded(
+                    child: _CupertinoTooltip(
+                      message: outputPath!,
+                      child: Text(
+                        outputPath!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: redactKitMutedTextColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (onOpenFolder != null) ...<Widget>[
+                  const SizedBox(width: 10),
+                  _CupertinoActionButton(
+                    onPressed: onOpenFolder,
+                    icon: const Icon(Icons.folder_open),
+                    label: 'Open Folder',
+                    emphasis: _CupertinoControlEmphasis.outlined,
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultCountPill extends StatelessWidget {
+  const _ResultCountPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: redactKitGroupedFillColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              value,
+              style: const TextStyle(
+                color: redactKitPrimaryTextColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                color: redactKitMutedTextColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1369,8 +2980,13 @@ class _MobileMetadataCleanerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showImageExportControls =
+        state.hasMetadataInput && state.metadataHasImages;
+    final showPdfExportControls =
+        state.hasMetadataInput && state.metadataHasPdfs;
+
     return ColoredBox(
-      color: const Color(0xFFF6F7F4),
+      color: redactKitBackgroundColor,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         child: Column(
@@ -1380,7 +2996,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
               children: <Widget>[
                 const Expanded(
                   child: Text(
-                    'Clean Metadata',
+                    'Metadata Only',
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -1396,36 +3012,9 @@ class _MobileMetadataCleanerView extends StatelessWidget {
               title: 'Input',
               icon: Icons.add_photo_alternate_outlined,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _MobileMetadataActionButton(
-                        icon: Icons.folder_copy_outlined,
-                        label: 'Files',
-                        onPressed: canClean
-                            ? controller.chooseMetadataImagesFromFiles
-                            : null,
-                        filled: true,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _MobileMetadataActionButton(
-                        icon: Icons.photo_library_outlined,
-                        label: 'Photos',
-                        onPressed: canClean
-                            ? controller.chooseMetadataImagesFromPhotos
-                            : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _KeepFilenamesToggle(
-                  label: 'Keep filenames',
-                  value: state.preserveMetadataCleanFileNames,
-                  onChanged: canClean
-                      ? controller.setPreserveMetadataCleanFileNames
+                _MetadataInputChooserButton(
+                  onPressed: canClean
+                      ? controller.chooseMetadataFilesOrFolder
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -1433,7 +3022,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                   label: state.metadataInputLabel ?? 'No input selected',
                   description:
                       state.metadataInputDescription ??
-                      'Choose an image, multiple images, or a folder.',
+                      'Choose files or a folder containing images and PDFs.',
                   selected: state.hasMetadataInput,
                 ),
               ],
@@ -1455,20 +3044,52 @@ class _MobileMetadataCleanerView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _MobileMetadataSection(
-              title: 'Format',
-              icon: Icons.tune_outlined,
+              title: 'Export Format',
+              icon: CupertinoIcons.slider_horizontal_3,
               children: <Widget>[
-                _ExportFormatPicker(
-                  selected: state.exportFormat,
-                  onChanged: controller.setExportFormat,
-                ),
-                if (state.exportFormat == ExportFormat.jpeg) ...<Widget>[
+                if (!state.hasMetadataInput)
+                  const Text(
+                    'Choose input to show matching export controls.',
+                    style: TextStyle(
+                      color: redactKitMutedTextColor,
+                      height: 1.35,
+                    ),
+                  ),
+                if (showImageExportControls) ...<Widget>[
+                  _ExportFormatPicker(
+                    selected: state.exportFormat,
+                    onChanged: controller.setExportFormat,
+                  ),
                   const SizedBox(height: 16),
-                  _JpegQualityPresetPicker(
+                  _ImageQualityPicker(
+                    format: state.exportFormat,
                     selected: state.jpegQualityPreset,
                     onChanged: controller.setJpegQualityPreset,
                   ),
                 ],
+                if (showPdfExportControls) ...<Widget>[
+                  if (showImageExportControls) const SizedBox(height: 16),
+                  _PdfQualityPresetPicker(
+                    selected: state.pdfQualityPreset,
+                    onChanged: controller.setPdfQualityPreset,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                _KeepFilenamesToggle(
+                  label: 'Keep filenames',
+                  value: state.preserveMetadataCleanFileNames,
+                  onChanged: canClean
+                      ? controller.setPreserveMetadataCleanFileNames
+                      : null,
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  _metadataExportFormatDescription(state),
+                  style: const TextStyle(
+                    color: redactKitMutedTextColor,
+                    height: 1.35,
+                  ),
+                ),
               ],
             ),
             if (state.isCleaningMetadata) ...<Widget>[
@@ -1481,20 +3102,18 @@ class _MobileMetadataCleanerView extends StatelessWidget {
             const SizedBox(height: 14),
             SizedBox(
               height: 52,
-              child: FilledButton.icon(
+              child: _CupertinoActionButton(
                 onPressed: canClean && state.hasMetadataInput
                     ? controller.startMetadataClean
                     : null,
                 icon: state.isExporting
                     ? const SizedBox.square(
                         dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                        child: CupertinoActivityIndicator(color: Colors.white),
                       )
                     : const Icon(Icons.play_arrow),
-                label: const Text('Start'),
+                label: 'Start',
+                emphasis: _CupertinoControlEmphasis.filled,
               ),
             ),
           ],
@@ -1522,7 +3141,7 @@ class _MobileMetadataSection extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: const Color(0xFFDCE2DC)),
+        border: Border.all(color: redactKitBorderColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1530,11 +3149,7 @@ class _MobileMetadataSection extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(
-                icon,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+              Icon(icon, size: 18, color: redactKitAccentColor),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1555,45 +3170,6 @@ class _MobileMetadataSection extends StatelessWidget {
   }
 }
 
-class _MobileMetadataActionButton extends StatelessWidget {
-  const _MobileMetadataActionButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.filled = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onPressed;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) {
-    final child = Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        Icon(icon, size: 20),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-      ],
-    );
-
-    final style = ButtonStyle(
-      minimumSize: WidgetStateProperty.all(const Size.fromHeight(50)),
-      shape: WidgetStateProperty.all(
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-
-    return filled
-        ? FilledButton(onPressed: onPressed, style: style, child: child)
-        : FilledButton.tonal(onPressed: onPressed, style: style, child: child);
-  }
-}
-
 class _MetadataProgressBanner extends StatelessWidget {
   const _MetadataProgressBanner({required this.progress, required this.status});
 
@@ -1608,7 +3184,7 @@ class _MetadataProgressBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFDCE2DC)),
+        border: Border.all(color: redactKitBorderColor),
         color: Colors.white,
       ),
       child: Column(
@@ -1621,8 +3197,42 @@ class _MetadataProgressBanner extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 10),
-          LinearProgressIndicator(value: clampedProgress),
+          _CupertinoProgressBar(value: clampedProgress),
         ],
+      ),
+    );
+  }
+}
+
+class _CupertinoProgressBar extends StatelessWidget {
+  const _CupertinoProgressBar({required this.value});
+
+  final double? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = value;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 5,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            const ColoredBox(color: redactKitSubtleBorderColor),
+            if (progress != null)
+              FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: progress.clamp(0.0, 1.0),
+                child: const ColoredBox(color: redactKitAccentColor),
+              )
+            else
+              const Align(
+                alignment: Alignment.center,
+                child: CupertinoActivityIndicator(radius: 7),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1646,16 +3256,14 @@ class _MetadataInputSummary extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 54),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFDCE2DC)),
-        color: selected ? Colors.white : const Color(0xFFF4F7F3),
+        border: Border.all(color: redactKitBorderColor),
+        color: selected ? Colors.white : redactKitGroupedFillColor,
       ),
       child: Row(
         children: <Widget>[
           Icon(
             selected ? Icons.check_circle_outline : Icons.inbox_outlined,
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : const Color(0xFF637066),
+            color: selected ? redactKitAccentColor : redactKitMutedTextColor,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1675,7 +3283,7 @@ class _MetadataInputSummary extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF637066),
+                    color: redactKitMutedTextColor,
                     fontSize: 12,
                     height: 1.25,
                   ),
@@ -1707,35 +3315,28 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Tooltip(
+        _CupertinoTooltip(
           message: path ?? displayName,
           waitDuration: const Duration(milliseconds: 450),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () =>
-                  _showMetadataOutputDetails(context, displayName, path),
-              onLongPress: () =>
-                  _showMetadataOutputDetails(context, displayName, path),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 44),
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFDCE2DC)),
-                  color: Colors.white,
-                ),
-                child: Text(
-                  displayName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF637066),
-                    fontWeight: FontWeight.w600,
-                  ),
+          child: GestureDetector(
+            onTap: () => _showMetadataOutputDetails(context, displayName, path),
+            onLongPress: () =>
+                _showMetadataOutputDetails(context, displayName, path),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: redactKitBorderColor),
+                color: Colors.white,
+              ),
+              child: Text(
+                displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: redactKitMutedTextColor,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -1748,16 +3349,18 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
             runSpacing: 10,
             children: <Widget>[
               if (onOpen != null)
-                OutlinedButton.icon(
+                _CupertinoActionButton(
                   onPressed: onOpen,
                   icon: const Icon(Icons.folder_open),
-                  label: const Text('Open Folder'),
+                  label: 'Open Folder',
+                  emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               if (onChoose != null)
-                OutlinedButton.icon(
+                _CupertinoActionButton(
                   onPressed: onChoose,
                   icon: const Icon(Icons.drive_folder_upload_outlined),
-                  label: const Text('Choose Folder'),
+                  label: 'Choose Folder',
+                  emphasis: _CupertinoControlEmphasis.outlined,
                 ),
             ],
           ),
@@ -1774,14 +3377,12 @@ void _showMetadataOutputDetails(
 ) {
   final copyValue = path ?? output;
 
-  showModalBottomSheet<void>(
+  showCupertinoModalPopup<void>(
     context: context,
-    showDragHandle: true,
     builder: (context) {
-      return SafeArea(
-        top: false,
+      return _CupertinoSheetSurface(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1797,11 +3398,12 @@ void _showMetadataOutputDetails(
                       ),
                     ),
                   ),
-                  Tooltip(
+                  _CupertinoTooltip(
                     message: 'Close',
-                    child: IconButton(
+                    child: _CupertinoIconControl(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
+                      icon: const Icon(CupertinoIcons.xmark),
+                      emphasis: _CupertinoControlEmphasis.outlined,
                     ),
                   ),
                 ],
@@ -1811,13 +3413,13 @@ void _showMetadataOutputDetails(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFDCE2DC)),
-                  color: const Color(0xFFF7F9F6),
+                  border: Border.all(color: redactKitBorderColor),
+                  color: redactKitGroupedFillColor,
                 ),
                 child: SelectableText(
                   output,
                   style: const TextStyle(
-                    color: Color(0xFF26312A),
+                    color: redactKitPrimaryTextColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1833,13 +3435,13 @@ void _showMetadataOutputDetails(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFDCE2DC)),
-                    color: const Color(0xFFF7F9F6),
+                    border: Border.all(color: redactKitBorderColor),
+                    color: redactKitGroupedFillColor,
                   ),
                   child: SelectableText(
                     path,
                     style: const TextStyle(
-                      color: Color(0xFF26312A),
+                      color: redactKitPrimaryTextColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1848,16 +3450,22 @@ void _showMetadataOutputDetails(
               const SizedBox(height: 12),
               Align(
                 alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
+                child: _CupertinoActionButton(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: copyValue));
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Output copied')),
+                    _showCompletionNotice(
+                      context,
+                      const _CompletionNotice(
+                        title: 'Copied',
+                        message: 'Output path copied.',
+                        tone: _NoticeTone.success,
+                      ),
                     );
                   },
                   icon: const Icon(Icons.copy),
-                  label: const Text('Copy'),
+                  label: 'Copy',
+                  emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
             ],
@@ -1871,6 +3479,15 @@ void _showMetadataOutputDetails(
 class _CanvasArea extends ConsumerWidget {
   const _CanvasArea({
     required this.state,
+    required this.image,
+    required this.redactions,
+    required this.onBeginRedaction,
+    required this.onUpdateRedaction,
+    required this.onFinishRedaction,
+    required this.onOpen,
+    required this.emptyTitle,
+    required this.openLabel,
+    this.onOpenPhotos,
     this.margin = const EdgeInsets.fromLTRB(16, 0, 0, 16),
     this.showBorder = true,
     this.fitPadding = 24,
@@ -1880,6 +3497,15 @@ class _CanvasArea extends ConsumerWidget {
   });
 
   final RedactionState state;
+  final ui.Image? image;
+  final List<RedactionRegion> redactions;
+  final void Function(Offset localPosition, Rect imageRect) onBeginRedaction;
+  final void Function(Offset localPosition, Rect imageRect) onUpdateRedaction;
+  final VoidCallback onFinishRedaction;
+  final VoidCallback onOpen;
+  final VoidCallback? onOpenPhotos;
+  final String emptyTitle;
+  final String openLabel;
   final EdgeInsetsGeometry margin;
   final bool showBorder;
   final double fitPadding;
@@ -1889,50 +3515,47 @@ class _CanvasArea extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(redactionControllerProvider.notifier);
-    final image = state.image;
+    final image = this.image;
 
     if (image == null) {
       return Container(
         margin: margin,
         decoration: BoxDecoration(
-          color: const Color(0xFFFBFCFA),
-          border: showBorder
-              ? Border.all(color: const Color(0xFFDCE2DC))
-              : null,
+          color: redactKitSecondaryBackgroundColor,
+          border: showBorder ? Border.all(color: redactKitBorderColor) : null,
         ),
         child: Center(
           child: compactEmptyState
               ? _MobileCanvasEmptyState(
                   isOpening: state.isOpening,
                   showPhotoButton: showPhotoButton,
-                  onOpen: controller.openImage,
-                  onOpenPhotos: controller.openPhotoLibrary,
+                  title: emptyTitle,
+                  openLabel: openLabel,
+                  onOpen: onOpen,
+                  onOpenPhotos: onOpenPhotos,
                 )
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     SizedBox(
                       width: 220,
-                      child: FilledButton.icon(
-                        onPressed: state.isOpening
-                            ? null
-                            : controller.openImage,
+                      child: _CupertinoActionButton(
+                        onPressed: state.isOpening ? null : onOpen,
                         icon: const Icon(Icons.folder_open),
-                        label: const Text('Open from Files'),
+                        label: openLabel,
+                        emphasis: _CupertinoControlEmphasis.filled,
                       ),
                     ),
-                    if (showPhotoButton)
+                    if (showPhotoButton && onOpenPhotos != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
                         child: SizedBox(
                           width: 220,
-                          child: FilledButton.tonalIcon(
-                            onPressed: state.isOpening
-                                ? null
-                                : controller.openPhotoLibrary,
+                          child: _CupertinoActionButton(
+                            onPressed: state.isOpening ? null : onOpenPhotos,
                             icon: const Icon(Icons.photo_library_outlined),
-                            label: const Text('Open from Photos'),
+                            label: 'Open from Photos',
+                            emphasis: _CupertinoControlEmphasis.tonal,
                           ),
                         ),
                       ),
@@ -1945,8 +3568,8 @@ class _CanvasArea extends ConsumerWidget {
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: const Color(0xFFFBFCFA),
-        border: showBorder ? Border.all(color: const Color(0xFFDCE2DC)) : null,
+        color: redactKitSecondaryBackgroundColor,
+        border: showBorder ? Border.all(color: redactKitBorderColor) : null,
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -1959,7 +3582,10 @@ class _CanvasArea extends ConsumerWidget {
               image: image,
               imageRect: imageRect,
               canvasSize: size,
-              controller: controller,
+              redactions: redactions,
+              onBeginRedaction: onBeginRedaction,
+              onUpdateRedaction: onUpdateRedaction,
+              onFinishRedaction: onFinishRedaction,
             );
           }
 
@@ -1967,7 +3593,10 @@ class _CanvasArea extends ConsumerWidget {
             state: state,
             image: image,
             imageRect: imageRect,
-            controller: controller,
+            redactions: redactions,
+            onBeginRedaction: onBeginRedaction,
+            onUpdateRedaction: onUpdateRedaction,
+            onFinishRedaction: onFinishRedaction,
           );
         },
       ),
@@ -1998,14 +3627,18 @@ class _MobileCanvasEmptyState extends StatelessWidget {
   const _MobileCanvasEmptyState({
     required this.isOpening,
     required this.showPhotoButton,
+    required this.title,
+    required this.openLabel,
     required this.onOpen,
     required this.onOpenPhotos,
   });
 
   final bool isOpening;
   final bool showPhotoButton;
+  final String title;
+  final String openLabel;
   final VoidCallback onOpen;
-  final VoidCallback onOpenPhotos;
+  final VoidCallback? onOpenPhotos;
 
   @override
   Widget build(BuildContext context) {
@@ -2018,42 +3651,44 @@ class _MobileCanvasEmptyState extends StatelessWidget {
           children: <Widget>[
             DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF1ED),
+                color: redactKitSystemGreenFillColor,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFDCE2DC)),
+                border: Border.all(color: redactKitBorderColor),
               ),
               child: const SizedBox.square(
                 dimension: 58,
                 child: Icon(
                   Icons.privacy_tip_outlined,
-                  color: Color(0xFF176B5B),
+                  color: redactKitAccentColor,
                   size: 30,
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Choose an image',
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: _CupertinoActionButton(
                 onPressed: isOpening ? null : onOpen,
                 icon: const Icon(Icons.folder_open),
-                label: const Text('Open from Files'),
+                label: openLabel,
+                emphasis: _CupertinoControlEmphasis.filled,
               ),
             ),
-            if (showPhotoButton) ...<Widget>[
+            if (showPhotoButton && onOpenPhotos != null) ...<Widget>[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.tonalIcon(
+                child: _CupertinoActionButton(
                   onPressed: isOpening ? null : onOpenPhotos,
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Open from Photos'),
+                  label: 'Open from Photos',
+                  emphasis: _CupertinoControlEmphasis.tonal,
                 ),
               ),
             ],
@@ -2069,30 +3704,37 @@ class _PlainRedactionCanvas extends StatelessWidget {
     required this.state,
     required this.image,
     required this.imageRect,
-    required this.controller,
+    required this.redactions,
+    required this.onBeginRedaction,
+    required this.onUpdateRedaction,
+    required this.onFinishRedaction,
   });
 
   final RedactionState state;
   final ui.Image image;
   final Rect imageRect;
-  final RedactionController controller;
+  final List<RedactionRegion> redactions;
+  final void Function(Offset localPosition, Rect imageRect) onBeginRedaction;
+  final void Function(Offset localPosition, Rect imageRect) onUpdateRedaction;
+  final VoidCallback onFinishRedaction;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onPanStart: (details) {
-        controller.beginRedaction(details.localPosition, imageRect);
+        onBeginRedaction(details.localPosition, imageRect);
       },
       onPanUpdate: (details) {
-        controller.updateRedaction(details.localPosition, imageRect);
+        onUpdateRedaction(details.localPosition, imageRect);
       },
-      onPanEnd: (_) => controller.finishRedaction(),
-      onPanCancel: controller.finishRedaction,
+      onPanEnd: (_) => onFinishRedaction(),
+      onPanCancel: onFinishRedaction,
       child: _RedactionPaintSurface(
         state: state,
         image: image,
         imageRect: imageRect,
+        redactions: redactions,
       ),
     );
   }
@@ -2106,14 +3748,20 @@ class _ZoomableRedactionCanvas extends StatefulWidget {
     required this.image,
     required this.imageRect,
     required this.canvasSize,
-    required this.controller,
+    required this.redactions,
+    required this.onBeginRedaction,
+    required this.onUpdateRedaction,
+    required this.onFinishRedaction,
   });
 
   final RedactionState state;
   final ui.Image image;
   final Rect imageRect;
   final Size canvasSize;
-  final RedactionController controller;
+  final List<RedactionRegion> redactions;
+  final void Function(Offset localPosition, Rect imageRect) onBeginRedaction;
+  final void Function(Offset localPosition, Rect imageRect) onUpdateRedaction;
+  final VoidCallback onFinishRedaction;
 
   @override
   State<_ZoomableRedactionCanvas> createState() =>
@@ -2157,12 +3805,12 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
 
         if (details.pointerCount >= 2) {
           _gestureMode = _CanvasGestureMode.zoom;
-          widget.controller.finishRedaction();
+          widget.onFinishRedaction();
           return;
         }
 
         _gestureMode = _CanvasGestureMode.draw;
-        widget.controller.beginRedaction(
+        widget.onBeginRedaction(
           _toCanvasPoint(details.localFocalPoint, effectiveOffset),
           widget.imageRect,
         );
@@ -2171,7 +3819,7 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
         if (details.pointerCount >= 2) {
           if (_gestureMode != _CanvasGestureMode.zoom) {
             _gestureMode = _CanvasGestureMode.zoom;
-            widget.controller.finishRedaction();
+            widget.onFinishRedaction();
             _gestureStartScale = _scale;
             _gestureStartOffset = effectiveOffset;
             _gestureStartFocalPoint = details.localFocalPoint;
@@ -2195,7 +3843,7 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
         }
 
         if (_gestureMode == _CanvasGestureMode.draw) {
-          widget.controller.updateRedaction(
+          widget.onUpdateRedaction(
             _toCanvasPoint(details.localFocalPoint, effectiveOffset),
             widget.imageRect,
           );
@@ -2203,7 +3851,7 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
       },
       onScaleEnd: (_) {
         if (_gestureMode == _CanvasGestureMode.draw) {
-          widget.controller.finishRedaction();
+          widget.onFinishRedaction();
         }
         _gestureMode = null;
       },
@@ -2219,6 +3867,7 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
                 state: widget.state,
                 image: widget.image,
                 imageRect: widget.imageRect,
+                redactions: widget.redactions,
               ),
             ),
           ),
@@ -2248,11 +3897,13 @@ class _RedactionPaintSurface extends StatelessWidget {
     required this.state,
     required this.image,
     required this.imageRect,
+    required this.redactions,
   });
 
   final RedactionState state;
   final ui.Image image;
   final Rect imageRect;
+  final List<RedactionRegion> redactions;
 
   @override
   Widget build(BuildContext context) {
@@ -2262,7 +3913,7 @@ class _RedactionPaintSurface extends StatelessWidget {
         painter: RedactionPainter(
           image: image,
           imageRect: imageRect,
-          redactions: state.redactions,
+          redactions: redactions,
           draftRect: state.draftRect,
           draftColor: state.draftColor,
         ),
@@ -2312,113 +3963,233 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 84,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      height: 76,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE2DC))),
+        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
         children: <Widget>[
-          const Text(
-            'Redact Kit',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(width: 22),
+          const _DesktopAppTitle(),
+          const SizedBox(width: 18),
           SizedBox(
-            width: 280,
+            width: 310,
             child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
           ),
-          const SizedBox(width: 18),
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              status,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF637066)),
+            child: _DesktopStatusBadge(
+              status: status,
+              busy: isOpening || isExporting,
             ),
           ),
-          if (mode == _WorkspaceMode.redact) ...<Widget>[
-            Tooltip(
-              message: 'Open from Files',
-              child: IconButton.filledTonal(
-                onPressed: isOpening ? null : onOpen,
-                icon: isOpening
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.folder_open),
+          const SizedBox(width: 14),
+          if (mode != _WorkspaceMode.metadata)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: redactKitGroupedFillColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: redactKitBorderColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _DesktopToolbarAction(
+                      message: mode == _WorkspaceMode.pdf
+                          ? 'Open PDF'
+                          : 'Open from Files',
+                      onPressed: isOpening ? null : onOpen,
+                      icon: isOpening
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CupertinoActivityIndicator(radius: 9),
+                            )
+                          : const Icon(Icons.folder_open),
+                      emphasis: _ToolbarEmphasis.tonal,
+                    ),
+                    if (mode == _WorkspaceMode.redact)
+                      _DesktopToolbarAction(
+                        message: 'Open from Photos',
+                        onPressed: isOpening ? null : onOpenPhotos,
+                        icon: const Icon(Icons.photo_library_outlined),
+                      ),
+                    const _ToolbarDivider(),
+                    _DesktopToolbarAction(
+                      message: 'Undo',
+                      onPressed: canUndo ? onUndo : null,
+                      icon: const Icon(Icons.undo),
+                    ),
+                    _DesktopToolbarAction(
+                      message: 'Clear',
+                      onPressed: canClear ? onClear : null,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                    const _ToolbarDivider(),
+                    _DesktopToolbarAction(
+                      message: 'Save to Files',
+                      onPressed: canExport ? onExport : null,
+                      icon: isExporting
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CupertinoActivityIndicator(
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save_alt),
+                      emphasis: _ToolbarEmphasis.filled,
+                    ),
+                    if (mode == _WorkspaceMode.redact) ...<Widget>[
+                      _DesktopToolbarAction(
+                        message: 'Save to Photos',
+                        onPressed: canExport ? onSaveToPhotos : null,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        emphasis: _ToolbarEmphasis.tonal,
+                      ),
+                      _DesktopToolbarAction(
+                        message: 'Share',
+                        onPressed: canExport ? onShare : null,
+                        icon: const Icon(Icons.ios_share),
+                        emphasis: _ToolbarEmphasis.tonal,
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Open from Photos',
-              child: IconButton.outlined(
-                onPressed: isOpening ? null : onOpenPhotos,
-                icon: const Icon(Icons.photo_library_outlined),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Undo',
-              child: IconButton.outlined(
-                onPressed: canUndo ? onUndo : null,
-                icon: const Icon(Icons.undo),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Clear',
-              child: IconButton.outlined(
-                onPressed: canClear ? onClear : null,
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Save to Files',
-              child: IconButton.filled(
-                onPressed: canExport ? onExport : null,
-                icon: isExporting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save_alt),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Save to Photos',
-              child: IconButton.filledTonal(
-                onPressed: canExport ? onSaveToPhotos : null,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Share',
-              child: IconButton.filledTonal(
-                onPressed: canExport ? onShare : null,
-                icon: const Icon(Icons.ios_share),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Tooltip(
-            message: mode == _WorkspaceMode.redact
-                ? 'Redact details'
-                : 'Metadata details',
-            child: IconButton.outlined(
+          const SizedBox(width: 10),
+          _CupertinoTooltip(
+            message: switch (mode) {
+              _WorkspaceMode.redact => 'Image details',
+              _WorkspaceMode.pdf => 'PDF details',
+              _WorkspaceMode.metadata => 'Metadata details',
+            },
+            child: _CupertinoIconControl(
               onPressed: onHelp,
-              icon: const Icon(Icons.info_outline),
+              icon: const Icon(CupertinoIcons.info),
+              emphasis: _CupertinoControlEmphasis.outlined,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DesktopAppTitle extends StatelessWidget {
+  const _DesktopAppTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: redactKitSystemGreenFillColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: redactKitBorderColor),
+          ),
+          child: const SizedBox.square(
+            dimension: 36,
+            child: Icon(
+              Icons.privacy_tip_outlined,
+              color: redactKitAccentColor,
+              size: 20,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          'Redact Kit',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+  }
+}
+
+class _DesktopStatusBadge extends StatelessWidget {
+  const _DesktopStatusBadge({required this.status, required this.busy});
+
+  final String status;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: redactKitGroupedFillColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Text(
+          busy ? 'Working: $status' : status,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: redactKitMutedTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ToolbarEmphasis { plain, tonal, filled }
+
+class _DesktopToolbarAction extends StatelessWidget {
+  const _DesktopToolbarAction({
+    required this.message,
+    required this.onPressed,
+    required this.icon,
+    this.emphasis = _ToolbarEmphasis.plain,
+  });
+
+  final String message;
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final _ToolbarEmphasis emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = _CupertinoIconControl(
+      onPressed: onPressed,
+      icon: icon,
+      emphasis: switch (emphasis) {
+        _ToolbarEmphasis.filled => _CupertinoControlEmphasis.filled,
+        _ToolbarEmphasis.tonal => _CupertinoControlEmphasis.tonal,
+        _ToolbarEmphasis.plain => _CupertinoControlEmphasis.outlined,
+      },
+    );
+
+    return _CupertinoTooltip(message: message, child: button);
+  }
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  const _ToolbarDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 24,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: redactKitBorderColor,
     );
   }
 }
@@ -2455,13 +4226,14 @@ class _SidePanel extends StatelessWidget {
     return Container(
       width: 320,
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: const Color(0xFFDCE2DC)),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x1F19251F),
+            color: Color(0x1F000000),
             blurRadius: 36,
             offset: Offset(0, 18),
           ),
@@ -2471,68 +4243,311 @@ class _SidePanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const _PanelHeading('Tool'),
-            Row(
-              children: <Widget>[
-                _ColorSwatchButton(
-                  color: const Color(0xFF050505),
-                  selected: selectedColor == const Color(0xFF050505),
-                  label: 'Black',
-                  onTap: () => onColorChanged(const Color(0xFF050505)),
-                ),
-                const SizedBox(width: 10),
-                _ColorSwatchButton(
-                  color: Colors.white,
-                  selected: selectedColor == Colors.white,
-                  label: 'White',
-                  onTap: () => onColorChanged(Colors.white),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Divider(height: 1),
-            const SizedBox(height: 22),
-            const _PanelHeading('Image'),
-            _MetricRow(
-              label: 'Pixels',
-              value: image == null
-                  ? 'None'
-                  : '${image.width} x ${image.height}',
-            ),
-            _MetricRow(label: 'Redactions', value: '$redactionCount'),
-            const _MetricRow(label: 'Cover', value: '100% opaque'),
-            _MetricRow(label: 'Format', value: exportFormat.label),
-            const SizedBox(height: 22),
-            const Divider(height: 1),
-            const SizedBox(height: 22),
-            const _PanelHeading('Export'),
-            _ExportFormatPicker(
-              selected: exportFormat,
-              onChanged: onExportFormatChanged,
-            ),
-            if (exportFormat == ExportFormat.jpeg) ...<Widget>[
-              const SizedBox(height: 18),
-              _JpegQualityPresetPicker(
-                selected: jpegQualityPreset,
-                onChanged: onJpegQualityPresetChanged,
+            _InspectorSection(
+              title: 'Tool',
+              icon: Icons.format_color_fill_outlined,
+              child: Row(
+                children: <Widget>[
+                  _ColorSwatchButton(
+                    color: const Color(0xFF050505),
+                    selected: selectedColor == const Color(0xFF050505),
+                    label: 'Black',
+                    onTap: () => onColorChanged(const Color(0xFF050505)),
+                  ),
+                  const SizedBox(width: 10),
+                  _ColorSwatchButton(
+                    color: Colors.white,
+                    selected: selectedColor == Colors.white,
+                    label: 'White',
+                    onTap: () => onColorChanged(Colors.white),
+                  ),
+                ],
               ),
-            ],
-            const SizedBox(height: 18),
-            _KeepFilenamesToggle(
-              label: 'Keep filename',
-              value: preserveRedactionExportFileName,
-              onChanged: onPreserveRedactionExportFileNameChanged,
             ),
-            const SizedBox(height: 18),
-            Text(
-              exportFormat == ExportFormat.png
-                  ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
-                  : 'JPEG is lossy. Lower quality makes smaller files.',
-              style: const TextStyle(color: Color(0xFF637066), height: 1.35),
+            const SizedBox(height: 12),
+            _InspectorSection(
+              title: 'Image',
+              icon: Icons.image_outlined,
+              child: Column(
+                children: <Widget>[
+                  _MetricRow(
+                    label: 'Pixels',
+                    value: image == null
+                        ? 'None'
+                        : '${image.width} x ${image.height}',
+                  ),
+                  _MetricRow(label: 'Redactions', value: '$redactionCount'),
+                  const _MetricRow(label: 'Cover', value: '100% opaque'),
+                  _MetricRow(label: 'Format', value: exportFormat.label),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _InspectorSection(
+              title: 'Export',
+              icon: Icons.save_alt,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _ExportFormatPicker(
+                    selected: exportFormat,
+                    onChanged: onExportFormatChanged,
+                  ),
+                  const SizedBox(height: 16),
+                  _ImageQualityPicker(
+                    format: exportFormat,
+                    selected: jpegQualityPreset,
+                    onChanged: onJpegQualityPresetChanged,
+                  ),
+                  const SizedBox(height: 16),
+                  _KeepFilenamesToggle(
+                    label: 'Keep filename',
+                    value: preserveRedactionExportFileName,
+                    onChanged: onPreserveRedactionExportFileNameChanged,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    exportFormat == ExportFormat.png
+                        ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
+                        : 'JPEG is lossy. Lower quality makes smaller files.',
+                    style: const TextStyle(
+                      color: redactKitMutedTextColor,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PdfSidePanel extends StatelessWidget {
+  const _PdfSidePanel({
+    required this.state,
+    required this.selectedColor,
+    required this.onColorChanged,
+    required this.onPreviousPage,
+    required this.onNextPage,
+    required this.onPageChanged,
+    required this.onExport,
+    required this.onPdfQualityPresetChanged,
+    required this.onPreservePdfExportFileNameChanged,
+  });
+
+  final RedactionState state;
+  final Color selectedColor;
+  final ValueChanged<Color> onColorChanged;
+  final VoidCallback onPreviousPage;
+  final VoidCallback onNextPage;
+  final ValueChanged<int> onPageChanged;
+  final VoidCallback onExport;
+  final ValueChanged<PdfQualityPreset> onPdfQualityPresetChanged;
+  final ValueChanged<bool> onPreservePdfExportFileNameChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final pageImage = state.pdfPageImage;
+    final canExport = state.hasPdf && !state.isExporting;
+    final canMoveBack = state.hasPdf && state.pdfCurrentPage > 1;
+    final canMoveForward =
+        state.hasPdf && state.pdfCurrentPage < state.pdfPageCount;
+
+    return Container(
+      width: 320,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitBorderColor),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x1F000000),
+            blurRadius: 36,
+            offset: Offset(0, 18),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _InspectorSection(
+              title: 'Tool',
+              icon: Icons.format_color_fill_outlined,
+              child: Row(
+                children: <Widget>[
+                  _ColorSwatchButton(
+                    color: const Color(0xFF050505),
+                    selected: selectedColor == const Color(0xFF050505),
+                    label: 'Black',
+                    onTap: () => onColorChanged(const Color(0xFF050505)),
+                  ),
+                  const SizedBox(width: 10),
+                  _ColorSwatchButton(
+                    color: Colors.white,
+                    selected: selectedColor == Colors.white,
+                    label: 'White',
+                    onTap: () => onColorChanged(Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _InspectorSection(
+              title: 'PDF',
+              icon: Icons.picture_as_pdf_outlined,
+              child: Column(
+                children: <Widget>[
+                  _MetricRow(
+                    label: 'Page',
+                    value: state.hasPdf
+                        ? '${state.pdfCurrentPage} / ${state.pdfPageCount}'
+                        : 'None',
+                  ),
+                  _MetricRow(
+                    label: 'Pixels',
+                    value: pageImage == null
+                        ? 'None'
+                        : '${pageImage.width} x ${pageImage.height}',
+                  ),
+                  _MetricRow(
+                    label: 'Page redactions',
+                    value: '${state.currentPdfRedactions.length}',
+                  ),
+                  _MetricRow(
+                    label: 'Total redactions',
+                    value: '${state.pdfRedactionCount}',
+                  ),
+                  const SizedBox(height: 10),
+                  _PdfPageNumberField(
+                    currentPage: state.pdfCurrentPage,
+                    pageCount: state.pdfPageCount,
+                    isBusy: state.isOpening || state.isExporting,
+                    onPageChanged: onPageChanged,
+                  ),
+                  if (state.pdfPageCount > 1) ...<Widget>[
+                    const SizedBox(height: 6),
+                    _PdfPageSlider(
+                      currentPage: state.pdfCurrentPage,
+                      pageCount: state.pdfPageCount,
+                      isBusy: state.isOpening || state.isExporting,
+                      onPageChanged: onPageChanged,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: canMoveBack ? onPreviousPage : null,
+                          icon: const Icon(Icons.chevron_left),
+                          label: 'Prev',
+                          emphasis: _CupertinoControlEmphasis.outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: canMoveForward ? onNextPage : null,
+                          icon: const Icon(Icons.chevron_right),
+                          label: 'Next',
+                          emphasis: _CupertinoControlEmphasis.outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _InspectorSection(
+              title: 'Export',
+              icon: Icons.save_alt,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _PdfQualityPresetPicker(
+                    selected: state.pdfQualityPreset,
+                    onChanged: onPdfQualityPresetChanged,
+                  ),
+                  const SizedBox(height: 16),
+                  _KeepFilenamesToggle(
+                    label: 'Keep filename',
+                    value: state.preservePdfExportFileName,
+                    onChanged: onPreservePdfExportFileNameChanged,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'PDF exports are flattened into image pages. Redacted export removes original PDF metadata and hidden document structure.',
+                    style: TextStyle(
+                      color: redactKitMutedTextColor,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _CupertinoActionButton(
+                    onPressed: canExport ? onExport : null,
+                    icon: state.isExporting
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CupertinoActivityIndicator(
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save_alt),
+                    label: 'Save Redacted PDF',
+                    emphasis: _CupertinoControlEmphasis.filled,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InspectorSection extends StatelessWidget {
+  const _InspectorSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(icon, size: 17, color: redactKitAccentColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        child,
+        const SizedBox(height: 2),
+      ],
     );
   }
 }
@@ -2545,33 +4560,111 @@ class _ExportFormatPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: SegmentedButton<ExportFormat>(
-        showSelectedIcon: false,
-        segments: ExportFormat.values
-            .map(
-              (format) => ButtonSegment<ExportFormat>(
-                value: format,
-                label: Text(format.label),
-              ),
-            )
-            .toList(growable: false),
-        selected: <ExportFormat>{selected},
-        onSelectionChanged: (formats) => onChanged(formats.single),
-      ),
+    return _CupertinoSegmentedControl<ExportFormat>(
+      selected: selected,
+      values: ExportFormat.values,
+      labelFor: (format) => format.label,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _ImageQualityPicker extends StatelessWidget {
+  const _ImageQualityPicker({
+    required this.format,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final ExportFormat format;
+  final JpegQualityPreset selected;
+  final ValueChanged<JpegQualityPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (format == ExportFormat.jpeg) {
+      return _JpegQualityPresetPicker(
+        title: 'Image quality',
+        selected: selected,
+        onChanged: onChanged,
+      );
+    }
+
+    return const _ReadOnlyQualityIndicator(
+      title: 'Image quality',
+      value: 'Original lossless',
+      description:
+          'PNG output keeps visible pixels lossless and strips metadata.',
+    );
+  }
+}
+
+class _PdfQualityPresetPicker extends StatelessWidget {
+  const _PdfQualityPresetPicker({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final PdfQualityPreset selected;
+  final ValueChanged<PdfQualityPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _QualityPicker<PdfQualityPreset>(
+      title: 'PDF quality',
+      value: selected.label,
+      values: PdfQualityPreset.values,
+      selected: selected,
+      labelFor: (preset) => preset.label,
+      description: selected.description,
+      onChanged: onChanged,
     );
   }
 }
 
 class _JpegQualityPresetPicker extends StatelessWidget {
   const _JpegQualityPresetPicker({
+    required this.title,
     required this.selected,
     required this.onChanged,
   });
 
+  final String title;
   final JpegQualityPreset selected;
   final ValueChanged<JpegQualityPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _QualityPicker<JpegQualityPreset>(
+      title: title,
+      value: selected.label,
+      values: JpegQualityPreset.values,
+      selected: selected,
+      labelFor: (preset) => preset.label,
+      description: selected.description,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _QualityPicker<T extends Object> extends StatelessWidget {
+  const _QualityPicker({
+    required this.title,
+    required this.value,
+    required this.values,
+    required this.selected,
+    required this.labelFor,
+    required this.description,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String value;
+  final List<T> values;
+  final T selected;
+  final String Function(T value) labelFor;
+  final String description;
+  final ValueChanged<T> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2580,42 +4673,87 @@ class _JpegQualityPresetPicker extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            const Expanded(
+            Expanded(
               child: Text(
-                'JPEG quality',
-                style: TextStyle(
-                  color: Color(0xFF637066),
+                title,
+                style: const TextStyle(
+                  color: redactKitMutedTextColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            Text(
-              selected.label,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<JpegQualityPreset>(
-            showSelectedIcon: false,
-            segments: JpegQualityPreset.values
-                .map(
-                  (preset) => ButtonSegment<JpegQualityPreset>(
-                    value: preset,
-                    label: Text(preset.label),
-                  ),
-                )
-                .toList(growable: false),
-            selected: <JpegQualityPreset>{selected},
-            onSelectionChanged: (presets) => onChanged(presets.single),
+        _CupertinoSegmentedControl<T>(
+          selected: selected,
+          values: values,
+          labelFor: labelFor,
+          onChanged: onChanged,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          description,
+          style: const TextStyle(color: redactKitMutedTextColor, height: 1.35),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReadOnlyQualityIndicator extends StatelessWidget {
+  const _ReadOnlyQualityIndicator({
+    required this.title,
+    required this.value,
+    required this.description,
+  });
+
+  final String title;
+  final String value;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: redactKitMutedTextColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: redactKitGroupedFillColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: redactKitBorderColor),
+          ),
+          child: const SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: Center(
+              child: Text(
+                'Original',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 10),
         Text(
-          selected.description,
-          style: const TextStyle(color: Color(0xFF637066), height: 1.35),
+          description,
+          style: const TextStyle(color: redactKitMutedTextColor, height: 1.35),
         ),
       ],
     );
@@ -2634,7 +4772,7 @@ class _PanelHeading extends StatelessWidget {
       child: Text(
         text,
         style: const TextStyle(
-          color: Color(0xFF637066),
+          color: redactKitMutedTextColor,
           fontSize: 13,
           fontWeight: FontWeight.w800,
         ),
@@ -2659,7 +4797,7 @@ class _MetricRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF637066),
+                color: redactKitMutedTextColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2686,11 +4824,12 @@ class _ColorSwatchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
+    return _CupertinoTooltip(
       message: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+      child: CupertinoButton(
+        onPressed: onTap,
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
         child: Container(
           width: 48,
           height: 40,
@@ -2698,15 +4837,13 @@ class _ColorSwatchButton extends StatelessWidget {
             color: color,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selected
-                  ? Theme.of(context).colorScheme.primary
-                  : const Color(0xFFDCE2DC),
+              color: selected ? redactKitAccentColor : redactKitBorderColor,
               width: selected ? 3 : 1,
             ),
           ),
           child: selected
               ? Icon(
-                  Icons.check,
+                  CupertinoIcons.checkmark,
                   color: color.computeLuminance() > 0.5
                       ? Colors.black
                       : Colors.white,
@@ -2733,18 +4870,18 @@ class _KeepFilenamesToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onChanged != null;
 
-    return Tooltip(
+    return _CupertinoTooltip(
       message: label,
-      child: InkWell(
+      child: GestureDetector(
         onTap: enabled ? () => onChanged!(!value) : null,
-        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(
             children: <Widget>[
-              Checkbox(
+              CupertinoSwitch(
                 value: value,
-                onChanged: enabled ? (checked) => onChanged!(checked!) : null,
+                onChanged: enabled ? onChanged : null,
+                activeTrackColor: redactKitAccentColor,
               ),
               const SizedBox(width: 4),
               Expanded(
@@ -2753,7 +4890,7 @@ class _KeepFilenamesToggle extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: enabled ? null : const Color(0xFF9AA49C),
+                    color: enabled ? null : redactKitDisabledColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

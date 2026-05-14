@@ -1,24 +1,37 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image_lib;
 
+import 'package:redact_kit/app/platform_style.dart';
 import 'package:redact_kit/app/redact_kit_app.dart';
 import 'package:redact_kit/features/redaction/application/redaction_controller.dart';
 import 'package:redact_kit/features/redaction/data/file_channel_service.dart';
 import 'package:redact_kit/features/redaction/data/jpeg_metadata.dart';
+import 'package:redact_kit/features/redaction/data/pdf_document_service.dart';
 import 'package:redact_kit/features/redaction/data/png_metadata.dart';
 import 'package:redact_kit/features/redaction/domain/export_format.dart';
 import 'package:redact_kit/features/redaction/domain/jpeg_quality_preset.dart';
+import 'package:redact_kit/features/redaction/domain/pdf_quality_preset.dart';
 import 'package:redact_kit/features/redaction/domain/redaction_state.dart';
 import 'package:redact_kit/features/redaction/domain/redaction_region.dart';
 import 'package:redact_kit/features/redaction/presentation/redaction_painter.dart';
 
 void main() {
+  testWidgets('uses a Cupertino app shell', (WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
+
+    final app = tester.widget<CupertinoApp>(find.byType(CupertinoApp));
+    expect(app.theme?.primaryColor, redactKitAccentColor);
+    expect(redactKitAccentColor, const Color(0xFF007AFF));
+    expect(app.theme?.scaffoldBackgroundColor, redactKitBackgroundColor);
+  });
+
   testWidgets('shows Redact Kit workspace', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
 
@@ -45,20 +58,20 @@ void main() {
     expect(find.text('Open from Photos'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
     expect(find.text('Photos'), findsOneWidget);
-    expect(find.text('Redact'), findsOneWidget);
+    expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
     expect(find.text('Clear'), findsOneWidget);
     expect(find.text('Export'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.info_outline));
+    await tester.tap(find.byIcon(CupertinoIcons.info));
     await tester.pumpAndSettle();
 
-    expect(find.text('Privacy & Export'), findsOneWidget);
+    expect(find.text('Image Privacy'), findsOneWidget);
     expect(find.text('Pixel-level redaction'), findsOneWidget);
     expect(find.textContaining('100% opaque solid pixels'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(CupertinoIcons.xmark));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Export'));
@@ -73,18 +86,23 @@ void main() {
     expect(find.text('Save to Photos'), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(CupertinoIcons.xmark));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Metadata'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Clean Metadata'), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.text('Metadata Only'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.info), findsOneWidget);
     expect(find.text('No input selected'), findsOneWidget);
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Output: app Cleaned folder'), findsOneWidget);
     expect(find.text('Keep filenames'), findsOneWidget);
+    expect(find.text('Choose Files or Folder'), findsOneWidget);
+    expect(
+      find.text('Files and folders supported. Files can be images or PDFs.'),
+      findsOneWidget,
+    );
     expect(find.text('Start'), findsOneWidget);
   });
 
@@ -101,12 +119,12 @@ void main() {
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.text('macOS / iOS'), findsNothing);
     expect(find.text('Open from Files'), findsOneWidget);
-    expect(find.text('Redact'), findsOneWidget);
+    expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
     expect(find.text('Format'), findsNothing);
-    expect(find.byIcon(Icons.tune), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.slider_horizontal_3), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.tune));
+    await tester.tap(find.byIcon(CupertinoIcons.slider_horizontal_3));
     await tester.pumpAndSettle();
 
     expect(find.text('Format'), findsOneWidget);
@@ -118,18 +136,19 @@ void main() {
     expect(find.text('Save to Photos'), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(CupertinoIcons.xmark));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Metadata'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Clean Metadata'), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.text('Metadata Only'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.info), findsOneWidget);
     expect(find.text('No input selected'), findsOneWidget);
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Output: app Cleaned folder'), findsOneWidget);
     expect(find.text('Keep filenames'), findsOneWidget);
+    expect(find.text('Choose Files or Folder'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
   });
 
@@ -146,20 +165,16 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
 
     expect(find.text('macOS / iOS'), findsNothing);
-    expect(find.text('Redact'), findsOneWidget);
+    expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
     expect(find.text('Format'), findsOneWidget);
     expect(find.text('PNG'), findsWidgets);
-    expect(find.text('JPEG'), findsOneWidget);
+    expect(find.text('JPEG'), findsWidgets);
     expect(find.text('Clean Metadata'), findsNothing);
     expect(find.text('Keep filename'), findsOneWidget);
     expect(find.text('Choose Images'), findsNothing);
-    expect(find.text('JPEG quality'), findsNothing);
-
-    await tester.tap(find.text('JPEG'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('JPEG quality'), findsOneWidget);
+    expect(find.text('Image quality'), findsOneWidget);
+    expect(find.text('Original lossless'), findsNothing);
     expect(find.text('Low'), findsOneWidget);
     expect(find.text('Medium'), findsWidgets);
     expect(find.text('High'), findsWidgets);
@@ -168,14 +183,21 @@ void main() {
     await tester.tap(find.text('Metadata'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Clean Metadata'), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
-    expect(find.text('Choose Image'), findsOneWidget);
-    expect(find.text('Choose Images'), findsOneWidget);
-    expect(find.text('Choose Folder'), findsOneWidget);
+    expect(find.text('Metadata Only'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.info), findsOneWidget);
+    expect(find.text('Choose Files or Folder'), findsOneWidget);
+    expect(
+      find.text('Files and folders supported. Files can be images or PDFs.'),
+      findsOneWidget,
+    );
     expect(find.text('No input selected'), findsOneWidget);
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Choose input to preview output'), findsOneWidget);
+    expect(find.text('Export Format'), findsOneWidget);
+    expect(
+      find.text('Choose input to show matching export controls.'),
+      findsOneWidget,
+    );
     expect(find.text('Keep filenames'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
   });
@@ -193,7 +215,7 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
 
     expect(find.text('Format'), findsNothing);
-    expect(find.byIcon(Icons.tune), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.slider_horizontal_3), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -209,11 +231,117 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: RedactKitApp()));
 
-    await tester.tap(find.text('JPEG'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('JPEG quality'), findsOneWidget);
+    expect(find.text('Image quality'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows a floating completion notice after export', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1120, 760);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final source = image_lib.Image(width: 2, height: 2)
+      ..setPixelRgb(0, 0, 255, 255, 255)
+      ..setPixelRgb(1, 0, 255, 255, 255)
+      ..setPixelRgb(0, 1, 255, 255, 255)
+      ..setPixelRgb(1, 1, 255, 255, 255);
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List.fromList(image_lib.encodePng(source)),
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const RedactKitApp(),
+      ),
+    );
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.openImage);
+    await tester.pump();
+    await tester.runAsync(controller.exportImage);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Clean image exported'), findsOneWidget);
+    expect(
+      find.text('Redactions are burned in and metadata is removed.'),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 3000));
+  });
+
+  testWidgets('shows a floating completion notice after metadata cleaning', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1120, 760);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final source = image_lib.Image(width: 2, height: 2)
+      ..setPixelRgb(0, 0, 255, 255, 255)
+      ..setPixelRgb(1, 0, 255, 255, 255)
+      ..setPixelRgb(0, 1, 255, 255, 255)
+      ..setPixelRgb(1, 1, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'private.png',
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const RedactKitApp(),
+      ),
+    );
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+    await tester.pump();
+    await tester.runAsync(controller.startMetadataClean);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Metadata cleaned'), findsOneWidget);
+    expect(
+      find.text('Clean copies were saved to the output folder.'),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 3000));
   });
 
   test('strips PNG ancillary metadata chunks', () {
@@ -279,18 +407,25 @@ void main() {
     );
   });
 
-  test('defaults JPEG quality to medium', () {
+  test('defaults quality settings to medium PDF and medium JPEG', () {
+    expect(const RedactionState().exportFormat, ExportFormat.jpeg);
     expect(const RedactionState().jpegQualityPreset, JpegQualityPreset.medium);
+    expect(const RedactionState().pdfQualityPreset, PdfQualityPreset.medium);
     expect(const RedactionState().preserveRedactionExportFileName, isFalse);
     expect(const RedactionState().preserveMetadataCleanFileNames, isFalse);
   });
 
-  testWidgets('folder metadata input plans an app cleaned output subfolder', (
+  testWidgets('folder metadata input cleans image and PDF files together', (
     WidgetTester tester,
   ) async {
     final source = image_lib.Image(width: 1, height: 1)
       ..setPixelRgb(0, 0, 255, 255, 255);
     final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final pdfPage = image_lib.Image(width: 2, height: 2)
+      ..setPixelRgb(0, 0, 255, 255, 255)
+      ..setPixelRgb(1, 0, 255, 255, 255)
+      ..setPixelRgb(0, 1, 255, 255, 255)
+      ..setPixelRgb(1, 1, 255, 255, 255);
     final service = _FakeFileChannelService(
       openBytes: pngBytes,
       metadataFolder: MetadataPickedFolder(
@@ -303,11 +438,31 @@ void main() {
             sourcePath: '/tmp/source-folder/one.png',
           ),
         ],
+        pdfs: <MetadataInputPdf>[
+          MetadataInputPdf(
+            bytes: Uint8List.fromList(<int>[1, 2, 3]),
+            sourceName: 'two.pdf',
+            sourcePath: '/tmp/source-folder/two.pdf',
+          ),
+        ],
         ignoredCount: 1,
       ),
     );
+    final pdfService = _FakePdfDocumentService(<PdfRenderedPage>[
+      PdfRenderedPage(
+        pageNumber: 1,
+        width: 2,
+        height: 2,
+        pageWidth: 2,
+        pageHeight: 2,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(pdfPage)),
+      ),
+    ]);
     final container = ProviderContainer(
-      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+      overrides: [
+        fileChannelServiceProvider.overrideWithValue(service),
+        pdfDocumentServiceProvider.overrideWithValue(pdfService),
+      ],
     );
     final subscription = container.listen(
       redactionControllerProvider,
@@ -334,17 +489,22 @@ void main() {
     );
     expect(
       container.read(redactionControllerProvider).metadataInputDescription,
-      '1 image, 1 ignored',
+      '1 image, 1 PDF, 1 ignored',
     );
 
     await tester.runAsync(controller.startMetadataClean);
 
     expect(service.batchDestinationPaths, <String>[
       '/tmp/redact-kit-cleaned/source-folder-metadata-removed',
+      '/tmp/redact-kit-cleaned/source-folder-metadata-removed',
+    ]);
+    expect(service.batchSavedNames, <String>[
+      'metadata-clean-001.jpg',
+      'metadata-clean-002.pdf',
     ]);
     expect(
       container.read(redactionControllerProvider).status,
-      'Success: cleaned metadata for 1 image to Cleaned/source-folder-metadata-removed (1 ignored)',
+      'Success: cleaned metadata for 2 files to Cleaned/source-folder-metadata-removed (1 ignored)',
     );
   });
 
@@ -373,11 +533,13 @@ void main() {
     ]);
     final service = _FakeFileChannelService(
       openBytes: pngBytes,
-      metadataImage: MetadataInputImage(
-        bytes: pngBytes,
-        sourceName: 'very-long-private-document-name.png',
-        sourcePath: '/tmp/source/very-long-private-document-name.png',
-      ),
+      batchImages: <MetadataInputImage>[
+        MetadataInputImage(
+          bytes: pngBytes,
+          sourceName: 'very-long-private-document-name.png',
+          sourcePath: '/tmp/source/very-long-private-document-name.png',
+        ),
+      ],
     );
 
     await tester.pumpWidget(
@@ -389,13 +551,15 @@ void main() {
 
     await tester.tap(find.text('Metadata'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Choose Image'));
+    await tester.tap(find.text('Choose Files or Folder'));
     await tester.pumpAndSettle();
 
     const outputPath =
-        'Cleaned/very-long-private-document-name-metadata-removed.png';
+        'Cleaned/very-long-private-document-name-metadata-removed.jpg';
     expect(find.text(outputPath), findsOneWidget);
 
+    await tester.ensureVisible(find.text(outputPath));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(outputPath));
     await tester.pumpAndSettle();
 
@@ -445,6 +609,7 @@ void main() {
       });
 
       final controller = container.read(redactionControllerProvider.notifier);
+      controller.setExportFormat(ExportFormat.png);
 
       await tester.runAsync(controller.chooseMetadataImageFromFiles);
 
@@ -484,6 +649,57 @@ void main() {
       );
     },
   );
+
+  testWidgets('metadata cleaning deletes temporary copied input paths', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 1, height: 1)
+      ..setPixelRgb(0, 0, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'private.png',
+        sourcePath: '/tmp/redact-kit-metadata-inputs/copy/private.png',
+      ),
+      deletesTemporaryInputs: true,
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+
+    expect(
+      container.read(redactionControllerProvider).hasMetadataInput,
+      isTrue,
+    );
+
+    await tester.runAsync(controller.startMetadataClean);
+
+    expect(service.deletedTemporaryInputPaths, <String>[
+      '/tmp/redact-kit-metadata-inputs/copy/private.png',
+    ]);
+    expect(
+      container.read(redactionControllerProvider).hasMetadataInput,
+      isFalse,
+    );
+    expect(
+      container.read(redactionControllerProvider).status,
+      'Success: cleaned metadata for 1 file to /tmp/redact-kit-cleaned/private-metadata-removed.jpg',
+    );
+  });
 
   testWidgets('metadata-only export ignores active redaction boxes', (
     WidgetTester tester,
@@ -528,8 +744,8 @@ void main() {
 
     await tester.runAsync(controller.exportMetadataCleanImage);
 
-    expect(service.savedName, 'metadata-clean.png');
-    final cleanImage = image_lib.decodePng(service.savedBytes!)!;
+    expect(service.savedName, 'metadata-clean.jpg');
+    final cleanImage = image_lib.decodeJpg(service.savedBytes!)!;
     final centerPixel = cleanImage.getPixel(3, 3);
 
     expect(centerPixel.r, 255);
@@ -568,7 +784,289 @@ void main() {
 
     await tester.runAsync(controller.exportImage);
 
-    expect(service.savedName, 'source-secret.png');
+    expect(service.savedName, 'source-secret.jpg');
+  });
+
+  testWidgets('PDF export flattens pages through the PDF service', (
+    WidgetTester tester,
+  ) async {
+    final pageOne = image_lib.Image(width: 4, height: 4);
+    final pageTwo = image_lib.Image(width: 2, height: 3);
+    for (final image in <image_lib.Image>[pageOne, pageTwo]) {
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          image.setPixelRgb(x, y, 255, 255, 255);
+        }
+      }
+    }
+
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List(0),
+      pdfBytes: Uint8List.fromList(<int>[1, 2, 3]),
+    );
+    final pdfService = _FakePdfDocumentService(<PdfRenderedPage>[
+      PdfRenderedPage(
+        pageNumber: 1,
+        width: 4,
+        height: 4,
+        pageWidth: 4,
+        pageHeight: 4,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(pageOne)),
+      ),
+      PdfRenderedPage(
+        pageNumber: 2,
+        width: 2,
+        height: 3,
+        pageWidth: 2,
+        pageHeight: 3,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(pageTwo)),
+      ),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        fileChannelServiceProvider.overrideWithValue(service),
+        pdfDocumentServiceProvider.overrideWithValue(pdfService),
+      ],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+    await tester.runAsync(controller.openPdf);
+
+    var state = container.read(redactionControllerProvider);
+    expect(state.hasPdf, isTrue);
+    expect(state.pdfPageCount, 2);
+    expect(state.pdfCurrentPage, 1);
+
+    controller.beginPdfRedaction(
+      const Offset(0, 0),
+      const Rect.fromLTWH(0, 0, 4, 4),
+    );
+    controller.updatePdfRedaction(
+      const Offset(4, 4),
+      const Rect.fromLTWH(0, 0, 4, 4),
+    );
+    controller.finishPdfRedaction();
+
+    state = container.read(redactionControllerProvider);
+    expect(state.pdfRedactionCount, 1);
+
+    await tester.runAsync(controller.exportPdf);
+
+    expect(service.savedName, 'redacted-clean.pdf');
+    expect(String.fromCharCodes(service.savedBytes!.take(5).toList()), '%PDF-');
+    expect(
+      container.read(redactionControllerProvider).status,
+      'Exported clean PDF with 1 redaction',
+    );
+  });
+
+  testWidgets('PDF workspace supports typed page jumps and a page slider', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1120, 760);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final pageOne = image_lib.Image(width: 4, height: 4);
+    final pageTwo = image_lib.Image(width: 4, height: 4);
+    for (final image in <image_lib.Image>[pageOne, pageTwo]) {
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          image.setPixelRgb(x, y, 255, 255, 255);
+        }
+      }
+    }
+
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List(0),
+      pdfBytes: Uint8List.fromList(<int>[1, 2, 3]),
+    );
+    final pdfService = _FakePdfDocumentService(<PdfRenderedPage>[
+      PdfRenderedPage(
+        pageNumber: 1,
+        width: 4,
+        height: 4,
+        pageWidth: 4,
+        pageHeight: 4,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(pageOne)),
+      ),
+      PdfRenderedPage(
+        pageNumber: 2,
+        width: 4,
+        height: 4,
+        pageWidth: 4,
+        pageHeight: 4,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(pageTwo)),
+      ),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        fileChannelServiceProvider.overrideWithValue(service),
+        pdfDocumentServiceProvider.overrideWithValue(pdfService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const RedactKitApp(),
+      ),
+    );
+
+    await tester.tap(find.text('PDF'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      container.read(redactionControllerProvider.notifier).openPdf,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CupertinoSlider), findsOneWidget);
+    expect(find.byType(CupertinoTextField), findsOneWidget);
+
+    await tester.enterText(find.byType(CupertinoTextField), '2');
+    tester
+        .widget<CupertinoTextField>(find.byType(CupertinoTextField))
+        .onSubmitted
+        ?.call('2');
+    await tester.runAsync(
+      () async => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    for (var index = 0; index < 8; index += 1) {
+      await tester.pump(const Duration(milliseconds: 20));
+      if (container.read(redactionControllerProvider).pdfCurrentPage == 2) {
+        break;
+      }
+    }
+
+    expect(container.read(redactionControllerProvider).pdfCurrentPage, 2);
+  });
+
+  testWidgets('metadata-only PDF cleaning saves a flattened PDF directly', (
+    WidgetTester tester,
+  ) async {
+    final page = image_lib.Image(width: 3, height: 3);
+    for (var y = 0; y < page.height; y++) {
+      for (var x = 0; x < page.width; x++) {
+        page.setPixelRgb(x, y, 255, 255, 255);
+      }
+    }
+
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List(0),
+      pdfBytes: Uint8List.fromList(<int>[7, 8, 9]),
+    );
+    final pdfService = _FakePdfDocumentService(<PdfRenderedPage>[
+      PdfRenderedPage(
+        pageNumber: 1,
+        width: 3,
+        height: 3,
+        pageWidth: 3,
+        pageHeight: 3,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(page)),
+      ),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        fileChannelServiceProvider.overrideWithValue(service),
+        pdfDocumentServiceProvider.overrideWithValue(pdfService),
+      ],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+    await tester.runAsync(controller.cleanMetadataPdfFromFile);
+
+    expect(service.savedName, 'metadata-clean.pdf');
+    expect(String.fromCharCodes(service.savedBytes!.take(5).toList()), '%PDF-');
+    expect(
+      container.read(redactionControllerProvider).status,
+      'Saved metadata-clean PDF',
+    );
+  });
+
+  testWidgets('metadata PDF input can be selected and cleaned from Start', (
+    WidgetTester tester,
+  ) async {
+    final page = image_lib.Image(width: 3, height: 3);
+    for (var y = 0; y < page.height; y++) {
+      for (var x = 0; x < page.width; x++) {
+        page.setPixelRgb(x, y, 255, 255, 255);
+      }
+    }
+
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List(0),
+      batchPdfs: const <MetadataInputPdf>[],
+      metadataPdf: MetadataInputPdf(
+        bytes: Uint8List.fromList(<int>[7, 8, 9]),
+        sourceName: 'private.pdf',
+      ),
+    );
+    final pdfService = _FakePdfDocumentService(<PdfRenderedPage>[
+      PdfRenderedPage(
+        pageNumber: 1,
+        width: 3,
+        height: 3,
+        pageWidth: 3,
+        pageHeight: 3,
+        pngBytes: Uint8List.fromList(image_lib.encodePng(page)),
+      ),
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        fileChannelServiceProvider.overrideWithValue(service),
+        pdfDocumentServiceProvider.overrideWithValue(pdfService),
+      ],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+    await tester.runAsync(controller.chooseMetadataPdfFromFiles);
+
+    expect(
+      container.read(redactionControllerProvider).metadataInputLabel,
+      '1 PDF',
+    );
+    expect(
+      container
+          .read(redactionControllerProvider)
+          .metadataOutputDirectoryDisplayName,
+      'Cleaned/private-metadata-removed.pdf',
+    );
+
+    await tester.runAsync(controller.startMetadataClean);
+
+    expect(service.batchSavedNames, <String>['private-metadata-removed.pdf']);
+    expect(
+      String.fromCharCodes(service.batchSavedBytes.first.take(5).toList()),
+      '%PDF-',
+    );
   });
 
   testWidgets(
@@ -613,15 +1111,15 @@ void main() {
       await tester.runAsync(controller.cleanMetadataBatchFromFiles);
 
       expect(service.batchSavedNames, <String>[
-        'metadata-clean-001.png',
-        'metadata-clean-002.png',
+        'metadata-clean-001.jpg',
+        'metadata-clean-002.jpg',
       ]);
       expect(service.batchDestinationPaths, <String>[
         '/tmp/redact-kit-cleaned',
         '/tmp/redact-kit-cleaned',
       ]);
 
-      final cleanImage = image_lib.decodePng(service.batchSavedBytes.first)!;
+      final cleanImage = image_lib.decodeJpg(service.batchSavedBytes.first)!;
       final centerPixel = cleanImage.getPixel(3, 3);
 
       expect(centerPixel.r, 255);
@@ -675,9 +1173,9 @@ void main() {
       await tester.runAsync(controller.cleanMetadataBatchFromFiles);
 
       expect(service.batchSavedNames, <String>[
-        'ID card.png',
-        'ID card-2.png',
-        'home-gps.png',
+        'ID card.jpg',
+        'ID card-2.jpg',
+        'home-gps.jpg',
       ]);
     },
   );
@@ -726,7 +1224,7 @@ void main() {
       container
           .read(redactionControllerProvider)
           .metadataOutputDirectoryDisplayName,
-      'Chosen Metadata Folder',
+      'Chosen Metadata Folder/private-home-gps-metadata-removed.jpg',
     );
 
     await tester.runAsync(controller.startMetadataClean);
@@ -734,7 +1232,7 @@ void main() {
     expect(service.batchDestinationPaths, <String>['/tmp/chosen-metadata']);
     expect(
       container.read(redactionControllerProvider).status,
-      contains('Chosen Metadata Folder'),
+      contains('/tmp/chosen-metadata/private-home-gps-metadata-removed.jpg'),
     );
   });
 
@@ -762,6 +1260,7 @@ void main() {
     });
 
     final controller = container.read(redactionControllerProvider.notifier);
+    controller.setExportFormat(ExportFormat.png);
 
     await tester.runAsync(controller.chooseMetadataImageFromFiles);
     await tester.runAsync(controller.startMetadataClean);
@@ -968,24 +1467,33 @@ bool _containsSubsequence(List<int> source, List<int> needle) {
 class _FakeFileChannelService extends FileChannelService {
   _FakeFileChannelService({
     required this.openBytes,
+    this.pdfBytes,
     this.batchImages = const <MetadataInputImage>[],
+    this.batchPdfs = const <MetadataInputPdf>[],
     this.metadataImage,
+    this.metadataPdf,
     this.metadataFolder,
     this.chosenMetadataDestination,
     this.destinationError,
+    this.deletesTemporaryInputs = false,
   });
 
   final Uint8List openBytes;
+  final Uint8List? pdfBytes;
   final List<MetadataInputImage> batchImages;
+  final List<MetadataInputPdf> batchPdfs;
   final MetadataInputImage? metadataImage;
+  final MetadataInputPdf? metadataPdf;
   final MetadataPickedFolder? metadataFolder;
   final MetadataCleanDestination? chosenMetadataDestination;
   final FileSystemException? destinationError;
+  final bool deletesTemporaryInputs;
   String? savedName;
   Uint8List? savedBytes;
   final batchSavedNames = <String>[];
   final batchSavedBytes = <Uint8List>[];
   final batchDestinationPaths = <String>[];
+  final deletedTemporaryInputPaths = <String>[];
   String? openedDirectoryPath;
 
   @override
@@ -994,6 +1502,13 @@ class _FakeFileChannelService extends FileChannelService {
   @override
   Future<PickedImageBytes?> openImageFile() async {
     return PickedImageBytes(bytes: openBytes, sourceName: 'source-secret.jpg');
+  }
+
+  @override
+  Future<PickedPdfBytes?> openPdfFile() async {
+    final bytes = pdfBytes;
+    if (bytes == null) return null;
+    return PickedPdfBytes(bytes: bytes, sourceName: 'source-secret.pdf');
   }
 
   @override
@@ -1017,6 +1532,38 @@ class _FakeFileChannelService extends FileChannelService {
 
   @override
   Future<MetadataInputImage?> chooseMetadataImageFile() async => metadataImage;
+
+  @override
+  Future<bool> deleteTemporaryMetadataInputPaths(Iterable<String> paths) async {
+    final copiedPaths = paths.toList(growable: false);
+    deletedTemporaryInputPaths.addAll(copiedPaths);
+    return deletesTemporaryInputs && copiedPaths.isNotEmpty;
+  }
+
+  @override
+  Future<List<MetadataInputPdf>> chooseMetadataPdfFiles() async => batchPdfs;
+
+  @override
+  Future<MetadataInputPdf?> chooseMetadataPdfFile() async => metadataPdf;
+
+  @override
+  Future<MetadataPickedInput?> chooseMetadataFilesOrFolder() async {
+    if (metadataFolder != null) {
+      return MetadataPickedInput(
+        folders: <MetadataPickedFolder>[metadataFolder!],
+      );
+    }
+    if (batchImages.isNotEmpty || batchPdfs.isNotEmpty) {
+      return MetadataPickedInput(images: batchImages, pdfs: batchPdfs);
+    }
+    if (metadataImage != null) {
+      return MetadataPickedInput(images: <MetadataInputImage>[metadataImage!]);
+    }
+    if (metadataPdf != null) {
+      return MetadataPickedInput(pdfs: <MetadataInputPdf>[metadataPdf!]);
+    }
+    return null;
+  }
 
   @override
   Future<MetadataPickedFolder?> chooseMetadataImageFolder() async =>
@@ -1073,7 +1620,30 @@ class _FakeFileChannelService extends FileChannelService {
   }
 
   @override
+  Future<String?> savePdf({
+    required String name,
+    required Uint8List bytes,
+  }) async {
+    savedName = name;
+    savedBytes = Uint8List.fromList(bytes);
+    return '/tmp/$name';
+  }
+
+  @override
   Future<String> saveMetadataCleanImage({
+    required MetadataCleanDestination destination,
+    required String name,
+    required Uint8List bytes,
+  }) async {
+    return saveMetadataCleanFile(
+      destination: destination,
+      name: name,
+      bytes: bytes,
+    );
+  }
+
+  @override
+  Future<String> saveMetadataCleanFile({
     required MetadataCleanDestination destination,
     required String name,
     required Uint8List bytes,
@@ -1082,5 +1652,40 @@ class _FakeFileChannelService extends FileChannelService {
     batchSavedBytes.add(Uint8List.fromList(bytes));
     batchDestinationPaths.add(destination.directoryPath);
     return '${destination.directoryPath}/$name';
+  }
+}
+
+class _FakePdfDocumentService extends PdfDocumentService {
+  _FakePdfDocumentService(this.pages);
+
+  final List<PdfRenderedPage> pages;
+
+  @override
+  Future<PdfDocumentHandle> openData(Uint8List bytes) async {
+    return _FakePdfDocumentHandle(pages);
+  }
+}
+
+class _FakePdfDocumentHandle implements PdfDocumentHandle {
+  _FakePdfDocumentHandle(this.pages);
+
+  final List<PdfRenderedPage> pages;
+  var closed = false;
+
+  @override
+  int get pagesCount => pages.length;
+
+  @override
+  Future<PdfRenderedPage> renderPage(
+    int pageNumber, {
+    double preferredScale = pdfDefaultPreferredRenderScale,
+    double maxRenderedSide = pdfDefaultMaxRenderedSide,
+  }) async {
+    return pages.singleWhere((page) => page.pageNumber == pageNumber);
+  }
+
+  @override
+  Future<void> close() async {
+    closed = true;
   }
 }

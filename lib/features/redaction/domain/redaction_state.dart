@@ -5,6 +5,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'export_format.dart';
 import 'jpeg_quality_preset.dart';
+import 'pdf_quality_preset.dart';
 import 'redaction_region.dart';
 
 part 'redaction_state.freezed.dart';
@@ -16,6 +17,13 @@ abstract class RedactionState with _$RedactionState {
   const factory RedactionState({
     ui.Image? image,
     String? sourceFileName,
+    ui.Image? pdfPageImage,
+    String? pdfSourceFileName,
+    @Default(0) int pdfPageCount,
+    @Default(1) int pdfCurrentPage,
+    @Default(false) bool preservePdfExportFileName,
+    @Default(<int, List<RedactionRegion>>{})
+    Map<int, List<RedactionRegion>> pdfRedactions,
     @Default('Ready') String status,
     @Default(Color(0xFF050505)) Color redactionColor,
     Offset? draftStart,
@@ -23,11 +31,14 @@ abstract class RedactionState with _$RedactionState {
     Color? draftColor,
     @Default(false) bool isOpening,
     @Default(false) bool isExporting,
-    @Default(ExportFormat.png) ExportFormat exportFormat,
+    @Default(ExportFormat.jpeg) ExportFormat exportFormat,
     @Default(JpegQualityPreset.medium) JpegQualityPreset jpegQualityPreset,
+    @Default(PdfQualityPreset.medium) PdfQualityPreset pdfQualityPreset,
     @Default(false) bool preserveRedactionExportFileName,
     @Default(false) bool preserveMetadataCleanFileNames,
     @Default(0) int metadataInputCount,
+    @Default(false) bool metadataHasImages,
+    @Default(false) bool metadataHasPdfs,
     String? metadataInputLabel,
     String? metadataInputDescription,
     double? metadataCleanProgress,
@@ -38,6 +49,14 @@ abstract class RedactionState with _$RedactionState {
 
   bool get hasImage => image != null;
   bool get hasRedactions => redactions.isNotEmpty;
+  bool get hasPdf => pdfPageImage != null && pdfPageCount > 0;
+  List<RedactionRegion> get currentPdfRedactions =>
+      pdfRedactions[pdfCurrentPage] ?? const <RedactionRegion>[];
+  int get pdfRedactionCount => pdfRedactions.values.fold<int>(
+    0,
+    (count, pageRedactions) => count + pageRedactions.length,
+  );
+  bool get hasPdfRedactions => pdfRedactionCount > 0;
   bool get hasMetadataInput => metadataInputCount > 0;
   bool get isCleaningMetadata => metadataCleanProgress != null;
 }

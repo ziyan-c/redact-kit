@@ -36,6 +36,159 @@ class FileChannelService {
     );
   }
 
+  Future<PickedPdfBytes?> openPdfFile() async {
+    final file = await file_selector.openFile(
+      acceptedTypeGroups: _pdfTypeGroups,
+      confirmButtonText: 'Open',
+    );
+    if (file == null) return null;
+
+    return PickedPdfBytes(
+      bytes: await file.readAsBytes(),
+      sourceName: file.name,
+      sourcePath: file.path,
+    );
+  }
+
+  Future<MetadataInputPdf?> chooseMetadataPdfFile() async {
+    final file = await file_selector.openFile(
+      acceptedTypeGroups: _pdfTypeGroups,
+      confirmButtonText: 'Choose',
+    );
+    if (file == null) return null;
+
+    if (!_supportsDirectoryPicker) {
+      return MetadataInputPdf(
+        bytes: await file.readAsBytes(),
+        sourceName: file.name,
+      );
+    }
+
+    return MetadataInputPdf(sourceName: file.name, sourcePath: file.path);
+  }
+
+  Future<MetadataPickedInput?> chooseMetadataFilesOrFolder() async {
+    if (_supportsMixedMetadataPicker) {
+      final paths = await _channel.invokeListMethod<String>(
+        'chooseMetadataFilesOrFolder',
+      );
+      if (paths == null) return null;
+
+      final images = <MetadataInputImage>[];
+      final pdfs = <MetadataInputPdf>[];
+      final folders = <MetadataPickedFolder>[];
+      var ignoredCount = 0;
+      for (final path in paths) {
+        final type = await FileSystemEntity.type(path, followLinks: false);
+        if (type == FileSystemEntityType.directory) {
+          folders.add(await _metadataPickedFolderFromPath(path));
+          continue;
+        }
+
+        if (type == FileSystemEntityType.file) {
+          if (_isSupportedImagePath(path)) {
+            images.add(
+              MetadataInputImage(
+                sourceName: _lastPathComponent(path),
+                sourcePath: path,
+              ),
+            );
+            continue;
+          }
+          if (_isSupportedPdfPath(path)) {
+            pdfs.add(
+              MetadataInputPdf(
+                sourceName: _lastPathComponent(path),
+                sourcePath: path,
+              ),
+            );
+            continue;
+          }
+        }
+
+        ignoredCount += 1;
+      }
+
+      if (images.isEmpty && pdfs.isEmpty && folders.isEmpty) {
+        return null;
+      }
+
+      return MetadataPickedInput(
+        images: images,
+        pdfs: pdfs,
+        folders: folders,
+        ignoredCount: ignoredCount,
+      );
+    }
+
+    final files = await file_selector.openFiles(
+      acceptedTypeGroups: _metadataFileTypeGroups,
+      confirmButtonText: 'Choose',
+    );
+    if (files.isEmpty) return null;
+
+    final images = <MetadataInputImage>[];
+    final pdfs = <MetadataInputPdf>[];
+    for (final file in files) {
+      if (_isSupportedImagePath(file.name)) {
+        images.add(
+          _supportsDirectoryPicker
+              ? MetadataInputImage(sourceName: file.name, sourcePath: file.path)
+              : MetadataInputImage(
+                  bytes: await file.readAsBytes(),
+                  sourceName: file.name,
+                ),
+        );
+        continue;
+      }
+      if (_isSupportedPdfPath(file.name)) {
+        pdfs.add(
+          _supportsDirectoryPicker
+              ? MetadataInputPdf(sourceName: file.name, sourcePath: file.path)
+              : MetadataInputPdf(
+                  bytes: await file.readAsBytes(),
+                  sourceName: file.name,
+                ),
+        );
+      }
+    }
+
+    if (images.isEmpty && pdfs.isEmpty) return null;
+
+    return MetadataPickedInput(images: images, pdfs: pdfs);
+  }
+
+  Future<bool> deleteTemporaryMetadataInputPaths(Iterable<String> paths) async {
+    var deletedAny = false;
+    for (final path in paths) {
+      if (await _deleteIfInsideAppCache(path)) {
+        deletedAny = true;
+      }
+    }
+    return deletedAny;
+  }
+
+  Future<List<MetadataInputPdf>> chooseMetadataPdfFiles() async {
+    final files = await file_selector.openFiles(
+      acceptedTypeGroups: _pdfTypeGroups,
+      confirmButtonText: 'Choose',
+    );
+
+    final pdfs = <MetadataInputPdf>[];
+    for (final file in files) {
+      pdfs.add(
+        _supportsDirectoryPicker
+            ? MetadataInputPdf(sourceName: file.name, sourcePath: file.path)
+            : MetadataInputPdf(
+                bytes: await file.readAsBytes(),
+                sourceName: file.name,
+              ),
+      );
+    }
+
+    return pdfs;
+  }
+
   Future<Uint8List?> openPhotoLibraryBytes() async {
     return (await openPhotoLibraryImage())?.bytes;
   }
@@ -139,23 +292,51 @@ class FileChannelService {
     if (path == null) return null;
 
     final directory = Directory(path);
+    return _metadataPickedFolderFromPath(directory.absolute.path);
+  }
+
+  Future<MetadataPickedFolder> _metadataPickedFolderFromPath(
+    String path,
+  ) async {
+    final directory = Directory(path);
     final images = <MetadataInputImage>[];
+    final pdfs = <MetadataInputPdf>[];
     var ignoredCount = 0;
     await for (final entity in directory.list(followLinks: false)) {
-      if (entity is! File || !_isSupportedImagePath(entity.path)) {
+      if (entity is! File) {
         ignoredCount += 1;
         continue;
       }
 
-      images.add(
-        MetadataInputImage(
-          sourceName: _lastPathComponent(entity.path),
-          sourcePath: entity.path,
-        ),
-      );
+      if (_isSupportedImagePath(entity.path)) {
+        images.add(
+          MetadataInputImage(
+            sourceName: _lastPathComponent(entity.path),
+            sourcePath: entity.path,
+          ),
+        );
+        continue;
+      }
+
+      if (_isSupportedPdfPath(entity.path)) {
+        pdfs.add(
+          MetadataInputPdf(
+            sourceName: _lastPathComponent(entity.path),
+            sourcePath: entity.path,
+          ),
+        );
+        continue;
+      }
+
+      ignoredCount += 1;
     }
 
     images.sort((a, b) {
+      final left = (a.sourceName ?? '').toLowerCase();
+      final right = (b.sourceName ?? '').toLowerCase();
+      return left.compareTo(right);
+    });
+    pdfs.sort((a, b) {
       final left = (a.sourceName ?? '').toLowerCase();
       final right = (b.sourceName ?? '').toLowerCase();
       return left.compareTo(right);
@@ -165,6 +346,7 @@ class FileChannelService {
       directoryPath: directory.absolute.path,
       displayName: directory.absolute.path,
       images: images,
+      pdfs: pdfs,
       ignoredCount: ignoredCount,
     );
   }
@@ -214,6 +396,16 @@ class FileChannelService {
     return destination.path;
   }
 
+  Future<String?> savePdf({required String name, required Uint8List bytes}) {
+    return _saveFile(
+      name: name,
+      bytes: bytes,
+      typeGroup: _pdfExportTypeGroup,
+      mimeType: _pdfMimeType,
+      shareTitle: 'Share clean PDF',
+    );
+  }
+
   Future<String?> shareImage({
     required String name,
     required Uint8List bytes,
@@ -244,12 +436,89 @@ class FileChannelService {
     }
   }
 
+  Future<String?> sharePdf({required String name, required Uint8List bytes}) {
+    return _shareFile(
+      name: name,
+      bytes: bytes,
+      extension: 'pdf',
+      mimeType: _pdfMimeType,
+      shareTitle: 'Share clean PDF',
+    );
+  }
+
   Future<String> saveImageToPhotos({
     required String name,
     required Uint8List bytes,
   }) async {
     await Gal.putImageBytes(bytes, name: _basenameWithoutExtension(name));
     return 'Photos';
+  }
+
+  Future<String?> _saveFile({
+    required String name,
+    required Uint8List bytes,
+    required file_selector.XTypeGroup typeGroup,
+    required String mimeType,
+    required String shareTitle,
+  }) async {
+    if (!_supportsSaveLocation) {
+      return _shareFile(
+        name: name,
+        bytes: bytes,
+        extension: _extension(name),
+        mimeType: mimeType,
+        shareTitle: shareTitle,
+      );
+    }
+
+    final destination = await file_selector.getSaveLocation(
+      acceptedTypeGroups: <file_selector.XTypeGroup>[typeGroup],
+      suggestedName: name,
+      confirmButtonText: 'Save',
+      canCreateDirectories: true,
+    );
+    if (destination == null) return null;
+
+    await share_plus.XFile.fromData(
+      bytes,
+      mimeType: mimeType,
+      name: name,
+    ).saveTo(destination.path);
+
+    return destination.path;
+  }
+
+  Future<String?> _shareFile({
+    required String name,
+    required Uint8List bytes,
+    required String extension,
+    required String mimeType,
+    required String shareTitle,
+  }) async {
+    final file = await _writeTemporaryCleanFile(
+      name: name,
+      bytes: bytes,
+      extension: extension,
+      mimeType: mimeType,
+    );
+
+    try {
+      final result = await share_plus.SharePlus.instance.share(
+        share_plus.ShareParams(
+          files: <share_plus.XFile>[file],
+          fileNameOverrides: <String>[name],
+          title: shareTitle,
+        ),
+      );
+
+      if (result.status == share_plus.ShareResultStatus.dismissed) {
+        return null;
+      }
+
+      return file.path;
+    } finally {
+      await _deleteFileIfExists(file.path);
+    }
   }
 
   Future<MetadataCleanDestination?> chooseMetadataCleanOutputDirectory() async {
@@ -315,6 +584,18 @@ class FileChannelService {
     required String name,
     required Uint8List bytes,
   }) async {
+    return saveMetadataCleanFile(
+      destination: destination,
+      name: name,
+      bytes: bytes,
+    );
+  }
+
+  Future<String> saveMetadataCleanFile({
+    required MetadataCleanDestination destination,
+    required String name,
+    required Uint8List bytes,
+  }) async {
     final file = await _uniqueFile('${destination.directoryPath}/$name');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
@@ -348,6 +629,23 @@ class FileChannelService {
 
     return share_plus.XFile(file.path, mimeType: format.mimeType, name: name);
   }
+
+  Future<share_plus.XFile> _writeTemporaryCleanFile({
+    required String name,
+    required Uint8List bytes,
+    required String extension,
+    required String mimeType,
+  }) async {
+    final directory = await getTemporaryDirectory();
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final baseName = _basenameWithoutExtension(name);
+    final safeExtension = extension.isEmpty ? 'bin' : extension;
+    final fileName = '$baseName-$timestamp.$safeExtension';
+    final file = File('${directory.path}/$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+
+    return share_plus.XFile(file.path, mimeType: mimeType, name: name);
+  }
 }
 
 class PickedImageBytes {
@@ -356,6 +654,14 @@ class PickedImageBytes {
     this.sourceName,
     this.sourcePath,
   });
+
+  final Uint8List bytes;
+  final String? sourceName;
+  final String? sourcePath;
+}
+
+class PickedPdfBytes {
+  const PickedPdfBytes({required this.bytes, this.sourceName, this.sourcePath});
 
   final Uint8List bytes;
   final String? sourceName;
@@ -382,18 +688,71 @@ class MetadataInputImage {
   }
 }
 
+class MetadataInputPdf {
+  const MetadataInputPdf({this.bytes, this.sourceName, this.sourcePath});
+
+  final Uint8List? bytes;
+  final String? sourceName;
+  final String? sourcePath;
+
+  Future<Uint8List> readBytes() async {
+    final inMemoryBytes = bytes;
+    if (inMemoryBytes != null) return inMemoryBytes;
+
+    final path = sourcePath;
+    if (path == null) {
+      throw StateError('Metadata PDF input has no readable source.');
+    }
+
+    return File(path).readAsBytes();
+  }
+}
+
 class MetadataPickedFolder {
   const MetadataPickedFolder({
     required this.directoryPath,
     required this.displayName,
     required this.images,
+    this.pdfs = const <MetadataInputPdf>[],
     this.ignoredCount = 0,
   });
 
   final String directoryPath;
   final String displayName;
   final List<MetadataInputImage> images;
+  final List<MetadataInputPdf> pdfs;
   final int ignoredCount;
+}
+
+class MetadataPickedInput {
+  const MetadataPickedInput({
+    this.images = const <MetadataInputImage>[],
+    this.pdfs = const <MetadataInputPdf>[],
+    this.folders = const <MetadataPickedFolder>[],
+    this.ignoredCount = 0,
+  });
+
+  final List<MetadataInputImage> images;
+  final List<MetadataInputPdf> pdfs;
+  final List<MetadataPickedFolder> folders;
+  final int ignoredCount;
+
+  List<MetadataInputImage> get allImages => <MetadataInputImage>[
+    ...images,
+    for (final folder in folders) ...folder.images,
+  ];
+
+  List<MetadataInputPdf> get allPdfs => <MetadataInputPdf>[
+    ...pdfs,
+    for (final folder in folders) ...folder.pdfs,
+  ];
+
+  int get totalIgnoredCount =>
+      ignoredCount +
+      folders.fold<int>(0, (total, folder) => total + folder.ignoredCount);
+
+  bool get isSingleFolderOnly =>
+      images.isEmpty && pdfs.isEmpty && folders.length == 1;
 }
 
 class MetadataCleanDestination {
@@ -426,6 +785,22 @@ const _imageTypeGroups = <file_selector.XTypeGroup>[
   ),
 ];
 
+const _pdfMimeType = 'application/pdf';
+
+const _pdfTypeGroups = <file_selector.XTypeGroup>[_pdfExportTypeGroup];
+
+const _metadataFileTypeGroups = <file_selector.XTypeGroup>[
+  ..._imageTypeGroups,
+  _pdfExportTypeGroup,
+];
+
+const _pdfExportTypeGroup = file_selector.XTypeGroup(
+  label: 'PDF',
+  extensions: <String>['pdf'],
+  mimeTypes: <String>[_pdfMimeType],
+  uniformTypeIdentifiers: <String>['com.adobe.pdf'],
+);
+
 file_selector.XTypeGroup _exportTypeGroup(ExportFormat format) {
   return file_selector.XTypeGroup(
     label: format.label,
@@ -435,8 +810,8 @@ file_selector.XTypeGroup _exportTypeGroup(ExportFormat format) {
   );
 }
 
-Future<void> _deleteIfInsideAppCache(String path) async {
-  if (path.isEmpty) return;
+Future<bool> _deleteIfInsideAppCache(String path) async {
+  if (path.isEmpty) return false;
 
   final roots = <Directory>[];
   try {
@@ -455,10 +830,11 @@ Future<void> _deleteIfInsideAppCache(String path) async {
   for (final root in roots) {
     final rootPath = root.absolute.path;
     if (filePath == rootPath || filePath.startsWith('$rootPath/')) {
-      await _deleteFileIfExists(filePath);
-      return;
+      return _deleteEntityIfExists(filePath);
     }
   }
+
+  return false;
 }
 
 Future<void> _deleteFileIfExists(String path) async {
@@ -470,6 +846,32 @@ Future<void> _deleteFileIfExists(String path) async {
   } catch (_) {
     // Cleanup is best-effort and should not turn a successful user action into
     // an error.
+  }
+}
+
+Future<bool> _deleteEntityIfExists(String path) async {
+  try {
+    final type = await FileSystemEntity.type(path, followLinks: false);
+    switch (type) {
+      case FileSystemEntityType.directory:
+        await Directory(path).delete(recursive: true);
+        return true;
+      case FileSystemEntityType.file:
+        await File(path).delete();
+        return true;
+      case FileSystemEntityType.link:
+        await Link(path).delete();
+        return true;
+      case FileSystemEntityType.notFound:
+      case FileSystemEntityType.pipe:
+      case FileSystemEntityType.unixDomainSock:
+        return false;
+    }
+    return false;
+  } catch (_) {
+    // Cleanup is best-effort and should not turn a successful user action into
+    // an error.
+    return false;
   }
 }
 
@@ -499,6 +901,17 @@ bool get _supportsDirectoryPicker {
   };
 }
 
+bool get _supportsMixedMetadataPicker {
+  if (kIsWeb) return false;
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.iOS || TargetPlatform.macOS => true,
+    TargetPlatform.android ||
+    TargetPlatform.fuchsia ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => false,
+  };
+}
+
 String _basenameWithoutExtension(String name) {
   final safeName = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-');
   final dot = safeName.lastIndexOf('.');
@@ -516,6 +929,10 @@ String _safeFolderName(String name) {
 
 bool _isSupportedImagePath(String path) {
   return _imageFileExtensions.contains(_extension(path));
+}
+
+bool _isSupportedPdfPath(String path) {
+  return _extension(path) == 'pdf';
 }
 
 String _extension(String path) {

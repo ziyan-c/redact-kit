@@ -46,6 +46,24 @@ class MainFlutterWindow: NSWindow {
     )
 
     channel.setMethodCallHandler { call, result in
+      if call.method == "chooseMetadataFilesOrFolder" {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+        panel.prompt = "Choose"
+        panel.message = "Choose image/PDF files or one folder."
+
+        guard panel.runModal() == .OK else {
+          result(nil)
+          return
+        }
+
+        result(panel.urls.map { $0.path })
+        return
+      }
+
       guard call.method == "openDirectory" else {
         result(FlutterMethodNotImplemented)
         return
