@@ -57,6 +57,17 @@ jobs:
           echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
           echo "build_number=${GITHUB_RUN_NUMBER}" >> "${GITHUB_OUTPUT}"
 
+      - name: Disable code signing for CI artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          project_file="macos/Runner.xcodeproj/project.pbxproj"
+
+          perl -0pi -e 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "-";/g' "${project_file}"
+          perl -0pi -e 's/"CODE_SIGN_IDENTITY\[sdk=macosx\*\]" = "Apple Development";/"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";/g' "${project_file}"
+          perl -0pi -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;\n\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n\t\t\t\tCODE_SIGNING_REQUIRED = NO;/g' "${project_file}"
+
       - name: Build macOS release
         run: |
           flutter build macos --release \
