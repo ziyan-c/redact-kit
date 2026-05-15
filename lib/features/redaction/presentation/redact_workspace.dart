@@ -829,8 +829,8 @@ class _TabletTopBar extends StatelessWidget {
               _TopBarIconButton(
                 tooltip: 'Save to Photos',
                 onPressed: canExport ? onSaveToPhotos : null,
-                icon: const Icon(Icons.add_photo_alternate_outlined),
-                tonal: true,
+                icon: const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
+                filled: true,
               ),
               _TopBarIconButton(
                 tooltip: 'Share',
@@ -1841,10 +1841,10 @@ void _showExportSheet(BuildContext context) {
                                   }
                                 : null,
                             icon: const Icon(
-                              Icons.add_photo_alternate_outlined,
+                              CupertinoIcons.photo_fill_on_rectangle_fill,
                             ),
                             label: 'Save to Photos',
-                            emphasis: _CupertinoControlEmphasis.tonal,
+                            emphasis: _CupertinoControlEmphasis.filled,
                           ),
                         ),
                       ],
@@ -2349,6 +2349,16 @@ bool _metadataInputHasFolder(List<MetadataInputDisplayItem> items) {
   return items.any((item) => item.kind == MetadataInputDisplayKind.folder);
 }
 
+bool _metadataCanSaveToPhotos(
+  RedactionState state, {
+  required bool hasFolderInput,
+}) {
+  return state.hasMetadataInput &&
+      state.metadataHasImages &&
+      !state.metadataHasPdfs &&
+      !hasFolderInput;
+}
+
 String _metadataChooserTitle(bool hasInput, bool hasFolderInput) {
   if (hasFolderInput) return 'Folder Selected';
   return 'Files or Folder';
@@ -2412,6 +2422,12 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
     final hasFolderInput = _metadataInputHasFolder(inputItems);
     final openingPhotos =
         state.isOpening && state.status.toLowerCase().contains('photo');
+    final canSaveToPhotos = _metadataCanSaveToPhotos(
+      state,
+      hasFolderInput: hasFolderInput,
+    );
+    final savingToPhotos =
+        state.isExporting && state.status.toLowerCase().contains('photos');
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -2598,22 +2614,14 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: _CupertinoActionButton(
-                              onPressed: canClean && state.hasMetadataInput
-                                  ? controller.startMetadataClean
-                                  : null,
-                              icon: state.isExporting
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CupertinoActivityIndicator(),
-                                    )
-                                  : const Icon(CupertinoIcons.play_fill),
-                              label: 'Start',
-                              emphasis: _CupertinoControlEmphasis.filled,
-                            ),
+                          _MetadataDestinationActions(
+                            canStart: canClean && state.hasMetadataInput,
+                            canSaveToPhotos: canSaveToPhotos,
+                            isExporting: state.isExporting,
+                            savingToPhotos: savingToPhotos,
+                            onSaveToFolder: controller.startMetadataClean,
+                            onSaveToPhotos:
+                                controller.startMetadataCleanToPhotos,
                           ),
                           if (state.isCleaningMetadata) ...<Widget>[
                             const SizedBox(height: 14),
@@ -3090,6 +3098,12 @@ class _MobileMetadataCleanerView extends StatelessWidget {
     final hasFolderInput = _metadataInputHasFolder(inputItems);
     final openingPhotos =
         state.isOpening && state.status.toLowerCase().contains('photo');
+    final canSaveToPhotos = _metadataCanSaveToPhotos(
+      state,
+      hasFolderInput: hasFolderInput,
+    );
+    final savingToPhotos =
+        state.isExporting && state.status.toLowerCase().contains('photos');
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -3173,8 +3187,12 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                       state.metadataOutputDirectoryDisplayName ??
                       'Output: app Cleaned folder',
                   path: state.metadataOutputDirectoryPath,
-                  onChoose: null,
-                  onOpen: null,
+                  onChoose: canClean && state.hasMetadataInput
+                      ? controller.chooseMetadataOutputFolder
+                      : null,
+                  onOpen: canClean && state.metadataOutputDirectoryPath != null
+                      ? controller.openMetadataOutputFolder
+                      : null,
                 ),
               ],
             ),
@@ -3236,21 +3254,13 @@ class _MobileMetadataCleanerView extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 14),
-            SizedBox(
-              height: 52,
-              child: _CupertinoActionButton(
-                onPressed: canClean && state.hasMetadataInput
-                    ? controller.startMetadataClean
-                    : null,
-                icon: state.isExporting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CupertinoActivityIndicator(),
-                      )
-                    : const Icon(CupertinoIcons.play_fill),
-                label: 'Start',
-                emphasis: _CupertinoControlEmphasis.filled,
-              ),
+            _MetadataDestinationActions(
+              canStart: canClean && state.hasMetadataInput,
+              canSaveToPhotos: canSaveToPhotos,
+              isExporting: state.isExporting,
+              savingToPhotos: savingToPhotos,
+              onSaveToFolder: controller.startMetadataClean,
+              onSaveToPhotos: controller.startMetadataCleanToPhotos,
             ),
           ],
         ),
@@ -3581,6 +3591,65 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
   }
 }
 
+class _MetadataDestinationActions extends StatelessWidget {
+  const _MetadataDestinationActions({
+    required this.canStart,
+    required this.canSaveToPhotos,
+    required this.isExporting,
+    required this.savingToPhotos,
+    required this.onSaveToFolder,
+    required this.onSaveToPhotos,
+  });
+
+  final bool canStart;
+  final bool canSaveToPhotos;
+  final bool isExporting;
+  final bool savingToPhotos;
+  final VoidCallback onSaveToFolder;
+  final VoidCallback onSaveToPhotos;
+
+  @override
+  Widget build(BuildContext context) {
+    final folderButton = _CupertinoActionButton(
+      onPressed: canStart ? onSaveToFolder : null,
+      icon: isExporting && !savingToPhotos
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CupertinoActivityIndicator(),
+            )
+          : const Icon(Icons.save_alt),
+      label: 'Save to Files',
+      emphasis: _CupertinoControlEmphasis.filled,
+    );
+
+    if (!canSaveToPhotos) {
+      return SizedBox(width: double.infinity, height: 48, child: folderButton);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SizedBox(height: 48, child: folderButton),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 48,
+          child: _CupertinoActionButton(
+            onPressed: canStart ? onSaveToPhotos : null,
+            icon: isExporting && savingToPhotos
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CupertinoActivityIndicator(),
+                  )
+                : const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
+            label: 'Save to Photos',
+            emphasis: _CupertinoControlEmphasis.filled,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 void _showMetadataOutputDetails(
   BuildContext context,
   String output,
@@ -3860,9 +3929,9 @@ class _MobileCanvasEmptyState extends StatelessWidget {
           children: <Widget>[
             DecoratedBox(
               decoration: BoxDecoration(
-                color: redactKitAccentFillColor,
+                color: redactKitGroupedFillColor,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: redactKitAccentBorderColor),
+                border: Border.all(color: redactKitSubtleBorderColor),
               ),
               child: const SizedBox.square(
                 dimension: 62,
@@ -4319,8 +4388,10 @@ class _TopBar extends StatelessWidget {
                       _DesktopToolbarAction(
                         message: 'Save to Photos',
                         onPressed: canExport ? onSaveToPhotos : null,
-                        icon: const Icon(Icons.add_photo_alternate_outlined),
-                        emphasis: _ToolbarEmphasis.tonal,
+                        icon: const Icon(
+                          CupertinoIcons.photo_fill_on_rectangle_fill,
+                        ),
+                        emphasis: _ToolbarEmphasis.filled,
                       ),
                       _DesktopToolbarAction(
                         message: 'Share',
@@ -4362,7 +4433,7 @@ class _DesktopAppTitle extends StatelessWidget {
       children: <Widget>[
         DecoratedBox(
           decoration: BoxDecoration(
-            color: redactKitAccentFillColor,
+            color: redactKitGroupedFillColor,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: redactKitSubtleBorderColor),
           ),

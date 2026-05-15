@@ -103,7 +103,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Photos'), findsWidgets);
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Save to Files'), findsOneWidget);
   });
 
   testWidgets('uses tablet controls on mid width', (WidgetTester tester) async {
@@ -150,7 +150,7 @@ void main() {
     expect(find.text('Output: app Cleaned folder'), findsOneWidget);
     expect(find.text('Keep filenames'), findsOneWidget);
     expect(find.text('Files or Folder'), findsOneWidget);
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Save to Files'), findsOneWidget);
   });
 
   testWidgets('shows export format controls on desktop width', (
@@ -203,7 +203,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Keep filenames'), findsOneWidget);
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Save to Files'), findsOneWidget);
   });
 
   testWidgets('uses tablet layout before desktop has enough width', (
@@ -716,6 +716,115 @@ void main() {
     ]);
   });
 
+  testWidgets('metadata image output can be saved to Photos', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 1, height: 1)
+      ..setPixelRgb(0, 0, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'private-home.png',
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+    await tester.runAsync(controller.startMetadataCleanToPhotos);
+
+    expect(service.batchSavedNames, isEmpty);
+    expect(service.photosSavedNames, <String>[
+      'private-home-metadata-removed.jpg',
+    ]);
+    expect(service.photosSavedBytes, hasLength(1));
+    expect(
+      container
+          .read(redactionControllerProvider)
+          .metadataOutputDirectoryDisplayName,
+      'Photos',
+    );
+    expect(
+      container.read(redactionControllerProvider).status,
+      'Success: cleaned metadata for 1 file to Photos',
+    );
+  });
+
+  testWidgets('metadata output buttons match selected input types', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1120, 760);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
+
+    final source = image_lib.Image(width: 1, height: 1)
+      ..setPixelRgb(0, 0, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'private-home.png',
+      ),
+      batchPdfs: <MetadataInputPdf>[
+        MetadataInputPdf(
+          bytes: Uint8List.fromList(<int>[1, 2, 3]),
+          sourceName: 'private-paper.pdf',
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const RedactKitApp(),
+      ),
+    );
+    await tester.tap(find.text('Metadata'));
+    await tester.pumpAndSettle();
+
+    final controller = container.read(redactionControllerProvider.notifier);
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+    await tester.pump();
+
+    expect(find.text('Save to Files'), findsOneWidget);
+    expect(find.text('Save to Photos'), findsOneWidget);
+
+    await tester.runAsync(controller.addMetadataFiles);
+    await tester.pump();
+
+    expect(container.read(redactionControllerProvider).metadataHasPdfs, isTrue);
+    expect(find.text('Save to Files'), findsOneWidget);
+    expect(find.text('Save to Photos'), findsNothing);
+  });
+
   testWidgets('metadata output field opens the full output value', (
     WidgetTester tester,
   ) async {
@@ -1211,7 +1320,7 @@ void main() {
     );
   });
 
-  testWidgets('metadata PDF input can be selected and cleaned from Start', (
+  testWidgets('metadata PDF input can be selected and cleaned to folder', (
     WidgetTester tester,
   ) async {
     final page = image_lib.Image(width: 3, height: 3);
@@ -1749,6 +1858,8 @@ class _FakeFileChannelService extends FileChannelService {
   final batchSavedNames = <String>[];
   final batchSavedBytes = <Uint8List>[];
   final batchDestinationPaths = <String>[];
+  final photosSavedNames = <String>[];
+  final photosSavedBytes = <Uint8List>[];
   final deletedTemporaryInputPaths = <String>[];
   String? openedDirectoryPath;
 
@@ -1883,6 +1994,16 @@ class _FakeFileChannelService extends FileChannelService {
     savedName = name;
     savedBytes = Uint8List.fromList(bytes);
     return '/tmp/$name';
+  }
+
+  @override
+  Future<String> saveImageToPhotos({
+    required String name,
+    required Uint8List bytes,
+  }) async {
+    photosSavedNames.add(name);
+    photosSavedBytes.add(Uint8List.fromList(bytes));
+    return 'Photos';
   }
 
   @override

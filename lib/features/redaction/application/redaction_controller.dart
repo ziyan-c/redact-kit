@@ -1050,6 +1050,144 @@ class RedactionController extends _$RedactionController {
     }
   }
 
+  Future<void> startMetadataCleanToPhotos() async {
+    if (state.isOpening || state.isExporting) return;
+
+    final selection = _metadataInputSelection;
+    if (selection == null || selection.isEmpty) {
+      state = state.copyWith(status: 'Choose metadata input first');
+      return;
+    }
+    if (!selection.canSaveImagesToPhotos) {
+      state = state.copyWith(
+        status: 'Photos output is available for image files only',
+      );
+      return;
+    }
+
+    final output = selection.outputFor(state.exportFormat);
+    final service = ref.read(fileChannelServiceProvider);
+    final totalCount = selection.images.length;
+    state = state.copyWith(
+      isExporting: true,
+      metadataCleanProgress: 0,
+      metadataOutputDirectoryPath: null,
+      metadataOutputDirectoryDisplayName: 'Photos',
+      status: 'Starting metadata clean to Photos',
+    );
+
+    try {
+      final snapshot = state;
+      final format = snapshot.exportFormat;
+      final jpegQualityPreset = snapshot.jpegQualityPreset;
+      final preserveFileNames = snapshot.preserveMetadataCleanFileNames;
+      final usedFileNames = <String>{};
+      var processedCount = 0;
+      var savedCount = 0;
+      var failedCount = 0;
+      String? firstFailure;
+
+      for (var index = 0; index < selection.images.length; index += 1) {
+        if (!ref.mounted) return;
+        final image = selection.images[index];
+        final imageLabel = _metadataInputName(image, index);
+        state = state.copyWith(
+          metadataCleanProgress: processedCount / totalCount,
+          status:
+              'Saving $imageLabel to Photos (${processedCount + 1}/$totalCount)',
+        );
+
+        try {
+          final bytes = await _renderMetadataCleanImage(
+            input: image,
+            format: format,
+            jpegQualityPreset: jpegQualityPreset,
+          );
+          await service.saveImageToPhotos(
+            name:
+                output.singleFileName ??
+                _metadataCleanBatchFileName(
+                  index: processedCount,
+                  total: totalCount,
+                  format: format,
+                  sourceName: image.sourceName,
+                  preserveFileNames: preserveFileNames,
+                  usedFileNames: usedFileNames,
+                ),
+            bytes: bytes,
+          );
+          savedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          firstFailure ??= '$imageLabel: ${_friendlyError(error)}';
+        } finally {
+          processedCount += 1;
+          if (ref.mounted) {
+            state = state.copyWith(
+              metadataCleanProgress: processedCount / totalCount,
+            );
+          }
+        }
+      }
+
+      if (!ref.mounted) return;
+      final status = _metadataCleanBatchStatus(
+        savedCount: savedCount,
+        failedCount: failedCount,
+        ignoredCount: selection.ignoredCount,
+        destinationName: 'Photos',
+        firstFailure: firstFailure,
+      );
+      final deletedTemporaryInputs = await _deleteTemporaryMetadataSelection(
+        service,
+        selection,
+      );
+      if (!ref.mounted) return;
+      if (deletedTemporaryInputs &&
+          identical(_metadataInputSelection, selection)) {
+        _metadataInputSelection = null;
+      }
+      state = state.copyWith(
+        metadataInputCount: deletedTemporaryInputs
+            ? 0
+            : state.metadataInputCount,
+        metadataHasImages: deletedTemporaryInputs
+            ? false
+            : state.metadataHasImages,
+        metadataHasPdfs: deletedTemporaryInputs ? false : state.metadataHasPdfs,
+        metadataInputLabel: deletedTemporaryInputs
+            ? null
+            : state.metadataInputLabel,
+        metadataInputDescription: deletedTemporaryInputs
+            ? null
+            : state.metadataInputDescription,
+        metadataOutputDirectoryPath: null,
+        metadataOutputDirectoryDisplayName: deletedTemporaryInputs
+            ? null
+            : 'Photos',
+        metadataCleanProgress: null,
+        status: status,
+      );
+    } on PlatformException catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        metadataCleanProgress: null,
+        status:
+            'Could not clean metadata: ${error.message ?? 'Platform error'}',
+      );
+    } catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        metadataCleanProgress: null,
+        status: 'Could not clean metadata: ${_friendlyError(error)}',
+      );
+    } finally {
+      if (ref.mounted) {
+        state = state.copyWith(isExporting: false, metadataCleanProgress: null);
+      }
+    }
+  }
+
   Future<Uint8List> _renderCleanImage({
     required ui.Image image,
     required List<RedactionRegion> redactions,
@@ -1869,6 +2007,10 @@ class _MetadataInputSelection {
   final MetadataCleanDestination? selectedDestination;
   int get totalCount => images.length + pdfs.length;
   bool get isEmpty => totalCount == 0;
+  bool get hasFolderInput =>
+      sources.any((source) => source.kind == MetadataInputDisplayKind.folder);
+  bool get canSaveImagesToPhotos =>
+      images.isNotEmpty && pdfs.isEmpty && !hasFolderInput;
   List<MetadataInputDisplayItem> get displayItems => <MetadataInputDisplayItem>[
     for (final source in sources) source.displayItem,
   ];
