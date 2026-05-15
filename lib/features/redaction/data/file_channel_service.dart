@@ -17,6 +17,7 @@ class FileChannelService {
   FileChannelService();
 
   static const _channel = MethodChannel('app.redactkit/files');
+  static const _sharePositionOrigin = Rect.fromLTWH(1, 1, 1, 1);
 
   Future<Uint8List?> openImageBytes() async {
     return (await openImageFile())?.bytes;
@@ -441,6 +442,7 @@ class FileChannelService {
           files: <share_plus.XFile>[file],
           fileNameOverrides: <String>[name],
           title: 'Share clean image',
+          sharePositionOrigin: _sharePositionOrigin,
         ),
       );
 
@@ -526,6 +528,7 @@ class FileChannelService {
           files: <share_plus.XFile>[file],
           fileNameOverrides: <String>[name],
           title: shareTitle,
+          sharePositionOrigin: _sharePositionOrigin,
         ),
       );
 
