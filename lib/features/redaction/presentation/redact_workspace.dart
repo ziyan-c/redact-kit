@@ -891,7 +891,6 @@ class _TabletSourceStrip extends StatelessWidget {
               onPressed: isOpening ? null : onFiles,
               icon: pdfMode ? CupertinoIcons.doc_text : CupertinoIcons.folder,
               label: 'Files',
-              primary: true,
             ),
           ),
           if (!pdfMode && onPhotos != null) ...<Widget>[
@@ -2726,11 +2725,13 @@ class _MetadataInputChooserButton extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 86),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: enabled ? redactKitControlFillColor : redactKitDisabledFillColor,
+        color: enabled
+            ? redactKitInputActionFillColor
+            : redactKitDisabledFillColor,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: enabled
-              ? redactKitControlBorderColor
+              ? redactKitInputActionBorderColor
               : redactKitSubtleBorderColor,
         ),
       ),
@@ -2744,7 +2745,7 @@ class _MetadataInputChooserButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: enabled
-                    ? redactKitControlBorderColor
+                    ? redactKitInputActionBorderColor
                     : redactKitSubtleBorderColor,
               ),
             ),
@@ -2778,7 +2779,7 @@ class _MetadataInputChooserButton extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: enabled
-                        ? redactKitControlTextColor
+                        ? redactKitInputActionTextColor
                         : redactKitDisabledColor,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -2801,7 +2802,9 @@ class _MetadataInputChooserButton extends StatelessWidget {
           const SizedBox(width: 10),
           Icon(
             CupertinoIcons.chevron_forward,
-            color: enabled ? redactKitControlTextColor : redactKitDisabledColor,
+            color: enabled
+                ? redactKitInputActionTextColor
+                : redactKitDisabledColor,
           ),
         ],
       ),
@@ -3747,11 +3750,10 @@ class _CanvasArea extends ConsumerWidget {
                   children: <Widget>[
                     SizedBox(
                       width: 220,
-                      child: _CupertinoActionButton(
+                      child: _SourceActionButton(
                         onPressed: state.isOpening ? null : onOpen,
-                        icon: const Icon(Icons.folder_open),
+                        icon: Icons.folder_open,
                         label: openLabel,
-                        emphasis: _CupertinoControlEmphasis.filled,
                       ),
                     ),
                     if (showPhotoButton && onOpenPhotos != null)
@@ -3759,11 +3761,10 @@ class _CanvasArea extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 10),
                         child: SizedBox(
                           width: 220,
-                          child: _CupertinoActionButton(
+                          child: _SourceActionButton(
                             onPressed: state.isOpening ? null : onOpenPhotos,
-                            icon: const Icon(Icons.photo_library_outlined),
+                            icon: Icons.photo_library_outlined,
                             label: 'Photos',
-                            emphasis: _CupertinoControlEmphasis.tonal,
                           ),
                         ),
                       ),
@@ -3887,7 +3888,6 @@ class _MobileCanvasEmptyState extends StatelessWidget {
               onPressed: isOpening ? null : onOpen,
               icon: CupertinoIcons.folder,
               label: openLabel,
-              primary: true,
             ),
             if (showPhotoButton && onOpenPhotos != null) ...<Widget>[
               const SizedBox(height: 10),
@@ -3909,27 +3909,23 @@ class _SourceActionButton extends StatelessWidget {
     required this.onPressed,
     required this.icon,
     required this.label,
-    this.primary = false,
   });
 
   final VoidCallback? onPressed;
   final IconData icon;
   final String label;
-  final bool primary;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
     final foreground = !enabled
         ? redactKitDisabledColor
-        : redactKitControlTextColor;
+        : redactKitInputActionTextColor;
     final background = !enabled
         ? redactKitDisabledFillColor
-        : primary
-        ? redactKitControlFillColor
-        : redactKitControlSecondaryFillColor;
+        : redactKitInputActionFillColor;
     final borderColor = enabled
-        ? redactKitControlBorderColor
+        ? redactKitInputActionBorderColor
         : redactKitSubtleBorderColor;
 
     return SizedBox(
@@ -4292,6 +4288,7 @@ class _TopBar extends StatelessWidget {
                         message: 'Photos',
                         onPressed: isOpening ? null : onOpenPhotos,
                         icon: const Icon(Icons.photo_library_outlined),
+                        emphasis: _ToolbarEmphasis.tonal,
                       ),
                     const _ToolbarDivider(),
                     _DesktopToolbarAction(
