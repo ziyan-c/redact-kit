@@ -60,6 +60,22 @@ class MainFlutterWindow: NSWindow {
           return
         }
 
+        let folderCount = panel.urls.filter { url in
+          var isDirectory: ObjCBool = false
+          return FileManager.default.fileExists(
+            atPath: url.path,
+            isDirectory: &isDirectory
+          ) && isDirectory.boolValue
+        }.count
+        if folderCount > 0 && panel.urls.count != 1 {
+          result(FlutterError(
+            code: "one_folder_only",
+            message: "Choose one folder at a time, or choose image/PDF files without a folder.",
+            details: nil
+          ))
+          return
+        }
+
         result(panel.urls.map { $0.path })
         return
       }

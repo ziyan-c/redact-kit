@@ -2,7 +2,17 @@ import 'dart:typed_data';
 
 Uint8List stripPngMetadataChunks(Uint8List png) {
   const signature = <int>[137, 80, 78, 71, 13, 10, 26, 10];
-  const allowedChunks = <String>{'IHDR', 'PLTE', 'IDAT', 'IEND'};
+  const allowedChunks = <String>{
+    'IHDR',
+    'PLTE',
+    'tRNS',
+    'sRGB',
+    'gAMA',
+    'cHRM',
+    'cICP',
+    'IDAT',
+    'IEND',
+  };
 
   if (png.length < signature.length) {
     throw const FormatException('PNG is too short.');

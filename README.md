@@ -21,14 +21,19 @@ and iOS.
   selected files or supported folder contents inside the app sandbox before
   cleaning.
 - PNG exports show as Original lossless quality, use lossless level-6
-  compression, and strip ancillary chunks so EXIF/text/time/profile metadata is
-  not copied.
+  compression, preserve transparency and standard color-rendering chunks, and
+  strip EXIF/text/time/profile metadata.
 - JPEG is the default image export format. JPEG exports are lossy, start on the
-  Medium quality preset, and strip APP/comment metadata segments after encoding.
+  Medium quality preset, bake EXIF orientation into pixels when needed, and
+  strip APP/comment metadata segments after encoding.
 - Flattened PDF exports use High, Medium, or Low quality presets. The preset
   controls page render resolution and JPEG page-image compression, then writes a
   new metadata-clean PDF.
-- PNG-to-PNG and JPEG-to-JPEG metadata cleaning strip the original container directly; format changes decode visible pixels and encode a fresh clean file.
+- PNG-to-PNG metadata cleaning strips the original container directly while
+  preserving transparency and standard color-rendering chunks. JPEG-to-JPEG
+  metadata cleaning strips the original container directly unless EXIF
+  orientation must be baked into pixels. Format changes decode visible pixels
+  and encode a fresh clean file.
 - Exports start with a generic filename instead of reusing the source image name.
 - Redact export can preserve the source filename when `Keep filename` is enabled; it starts disabled.
 - Single-image and multi-image metadata cleaning write directly to the app `Cleaned` folder unless an output folder is chosen.

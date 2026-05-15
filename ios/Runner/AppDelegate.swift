@@ -100,6 +100,8 @@ final class RedactKitFileChannelHandler: NSObject, UIDocumentPickerDelegate {
   }
 
   private func copyPickedUrlsIntoSandbox(_ urls: [URL]) throws -> [String] {
+    try validateSingleFolderSelection(urls)
+
     let root = fileManager.temporaryDirectory
       .appendingPathComponent("redact-kit-metadata-inputs", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -120,6 +122,28 @@ final class RedactKitFileChannelHandler: NSObject, UIDocumentPickerDelegate {
     }
 
     return copiedPaths
+  }
+
+  private func validateSingleFolderSelection(_ urls: [URL]) throws {
+    var folderCount = 0
+    for url in urls {
+      let scoped = url.startAccessingSecurityScopedResource()
+      defer {
+        if scoped {
+          url.stopAccessingSecurityScopedResource()
+        }
+      }
+
+      var isDirectory: ObjCBool = false
+      if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+         isDirectory.boolValue {
+        folderCount += 1
+      }
+    }
+
+    if folderCount > 0 && urls.count != 1 {
+      throw RedactKitPickerError.oneFolderOnly
+    }
   }
 
   private func copySupportedItem(from url: URL, into directory: URL) throws -> URL? {
@@ -193,6 +217,17 @@ final class RedactKitFileChannelHandler: NSObject, UIDocumentPickerDelegate {
       return true
     default:
       return false
+    }
+  }
+}
+
+enum RedactKitPickerError: LocalizedError {
+  case oneFolderOnly
+
+  var errorDescription: String? {
+    switch self {
+    case .oneFolderOnly:
+      return "Choose one folder at a time, or choose image/PDF files without a folder."
     }
   }
 }
