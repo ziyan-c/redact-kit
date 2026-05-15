@@ -359,6 +359,12 @@ void main() {
       26,
       10,
       ..._chunk('IHDR', <int>[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]),
+      ..._chunk('sRGB', <int>[0]),
+      ..._chunk('gAMA', <int>[0, 1, 0x86, 0xa0]),
+      ..._chunk('cHRM', List<int>.filled(32, 0)),
+      ..._chunk('cICP', <int>[1, 13, 0, 1]),
+      ..._chunk('tRNS', <int>[0]),
+      ..._chunk('iCCP', 'camera-profile'.codeUnits),
       ..._chunk('tEXt', 'secret=home'.codeUnits),
       ..._chunk('eXIf', <int>[1, 2, 3, 4]),
       ..._chunk('IDAT', <int>[120, 1, 1, 0]),
@@ -368,8 +374,18 @@ void main() {
     final stripped = stripPngMetadataChunks(png);
     final chunkTypes = _chunkTypes(stripped);
 
-    expect(chunkTypes, <String>['IHDR', 'IDAT', 'IEND']);
+    expect(chunkTypes, <String>[
+      'IHDR',
+      'sRGB',
+      'gAMA',
+      'cHRM',
+      'cICP',
+      'tRNS',
+      'IDAT',
+      'IEND',
+    ]);
     expect(String.fromCharCodes(stripped), isNot(contains('secret=home')));
+    expect(String.fromCharCodes(stripped), isNot(contains('camera-profile')));
   });
 
   test('strips JPEG app and comment metadata segments', () {
@@ -409,6 +425,49 @@ void main() {
       _containsSubsequence(stripped, <int>[0x11, 0xff, 0x00, 0x22]),
       isTrue,
     );
+  });
+
+  testWidgets('metadata JPEG cleaning bakes EXIF orientation into pixels', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 1, height: 2)
+      ..setPixelRgb(0, 0, 255, 0, 0)
+      ..setPixelRgb(0, 1, 0, 255, 0);
+    final jpegBytes = _jpegWithExifOrientation(
+      Uint8List.fromList(image_lib.encodeJpg(source, quality: 92)),
+      6,
+    );
+    final service = _FakeFileChannelService(
+      openBytes: jpegBytes,
+      metadataImage: MetadataInputImage(
+        bytes: jpegBytes,
+        sourceName: 'rotated.jpg',
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+    await tester.runAsync(controller.startMetadataClean);
+
+    final savedBytes = service.batchSavedBytes.single;
+    final decoded = image_lib.decodeImage(savedBytes);
+
+    expect(hasNonDefaultJpegExifOrientation(jpegBytes), isTrue);
+    expect(_jpegMarkers(savedBytes), isNot(contains(0xe1)));
+    expect(decoded?.width, 2);
+    expect(decoded?.height, 1);
   });
 
   test('defaults quality settings to medium PDF and medium JPEG', () {
@@ -1535,6 +1594,52 @@ List<int> _chunk(String type, List<int> data) {
 List<int> _jpegSegment(int marker, List<int> data) {
   final length = data.length + 2;
   return <int>[0xff, marker, (length >> 8) & 0xff, length & 0xff, ...data];
+}
+
+Uint8List _jpegWithExifOrientation(Uint8List jpeg, int orientation) {
+  return Uint8List.fromList(<int>[
+    0xff,
+    0xd8,
+    ..._jpegSegment(0xe1, _exifOrientationData(orientation)),
+    ...jpeg.skip(2),
+  ]);
+}
+
+List<int> _exifOrientationData(int orientation) {
+  return <int>[
+    0x45,
+    0x78,
+    0x69,
+    0x66,
+    0,
+    0,
+    0x4d,
+    0x4d,
+    0,
+    42,
+    0,
+    0,
+    0,
+    8,
+    0,
+    1,
+    0x01,
+    0x12,
+    0,
+    3,
+    0,
+    0,
+    0,
+    1,
+    0,
+    orientation,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  ];
 }
 
 List<String> _chunkTypes(Uint8List png) {

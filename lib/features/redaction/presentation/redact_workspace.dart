@@ -2014,7 +2014,7 @@ void _showRedactDetails(BuildContext context) {
         icon: Icons.cleaning_services_outlined,
         title: 'Metadata removed',
         body:
-            'Image export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
+            'Image export always rebuilds the image and removes metadata. PNG keeps pixel, transparency, and standard color-rendering chunks. JPEG removes APP0-APP15 and COM segments.',
       ),
       _PrivacyPoint(
         icon: Icons.badge_outlined,
@@ -2080,13 +2080,13 @@ void _showMetadataDetails(BuildContext context) {
         icon: Icons.auto_fix_high_outlined,
         title: 'Fast clean path',
         body:
-            'PNG-to-PNG and JPEG-to-JPEG outputs strip metadata directly from a copied file container. Format changes decode visible pixels and encode a fresh clean file.',
+            'PNG-to-PNG outputs strip metadata directly from a copied file container. JPEG-to-JPEG does the same unless EXIF orientation must be baked into pixels. Format changes decode visible pixels and encode a fresh clean file.',
       ),
       _PrivacyPoint(
         icon: Icons.cleaning_services_outlined,
         title: 'Metadata removed',
         body:
-            'PNG output keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
+            'PNG output keeps pixel, transparency, and standard color-rendering chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
       ),
       _PrivacyPoint(
         icon: Icons.drive_file_rename_outline,

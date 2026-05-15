@@ -1114,6 +1114,15 @@ class RedactionController extends _$RedactionController {
         case ExportFormat.png:
           return stripPngMetadataChunks(sourceBytes);
         case ExportFormat.jpeg:
+          if (hasNonDefaultJpegExifOrientation(sourceBytes)) {
+            final raster = image_lib.decodeImage(sourceBytes);
+            if (raster == null) {
+              throw StateError('Image decode failed.');
+            }
+            return stripJpegMetadataSegments(
+              image_lib.encodeJpg(raster, quality: jpegQualityPreset.quality),
+            );
+          }
           return stripJpegMetadataSegments(sourceBytes);
       }
     }
