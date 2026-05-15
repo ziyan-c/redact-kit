@@ -1,13 +1,18 @@
 import 'package:flutter/cupertino.dart';
 
-const redactKitAccentColor = Color(0xFF007AFF);
-const redactKitBackgroundColor = Color(0xFFF2F2F7);
+const redactKitAccentColor = Color(0xFF2F6F73);
+const redactKitBackgroundColor = Color(0xFFF5F5F7);
 const redactKitSecondaryBackgroundColor = Color(0xFFFFFFFF);
-const redactKitGroupedFillColor = Color(0xFFF9F9FB);
-const redactKitAccentFillColor = Color(0xFFEAF4FF);
+const redactKitGroupedFillColor = Color(0xFFF7F8FA);
+const redactKitAccentFillColor = Color(0xFFF0F7F6);
+const redactKitAccentBorderColor = Color(0xFFD9E9E7);
 const redactKitMutedTextColor = Color(0xFF6E6E73);
-const redactKitBorderColor = Color(0xFFC6C6C8);
-const redactKitSubtleBorderColor = Color(0xFFE5E5EA);
+const redactKitBorderColor = Color(0xFFD1D1D6);
+const redactKitSubtleBorderColor = Color(0xFFE2E4EA);
+const redactKitControlFillColor = Color(0xFFEAF5EF);
+const redactKitControlSecondaryFillColor = Color(0xFFF4FAF6);
+const redactKitControlBorderColor = Color(0xFFD3E5DA);
+const redactKitControlTextColor = Color(0xFF314E45);
 const redactKitDisabledColor = Color(0xFFAEAEB2);
 const redactKitDisabledFillColor = Color(0xFFF2F2F7);
 const redactKitPrimaryTextColor = Color(0xFF1C1C1E);

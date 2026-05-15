@@ -29,35 +29,35 @@ let slides = [
         subtitle: "Cover sensitive areas with real solid pixels, then export a clean copy."
     ),
     Slide(
-        sourcePath: "/Users/ziyan/Desktop/Simulator Screenshot - iPhone 17 - 2026-05-13 at 16.38.36.png",
+        sourcePath: "app_store_assets/app_store_connect_screenshots/iphone_6_9_1320x2868/03.png",
         fileName: "02_remove_private_metadata.png",
         kicker: "METADATA",
         title: "Remove private metadata",
         subtitle: "Clean EXIF, GPS, IPTC, XMP, thumbnails, and comments from images."
     ),
     Slide(
-        sourcePath: "/Users/ziyan/Desktop/Simulator Screenshot - iPhone 17 - 2026-05-13 at 16.38.33.png",
+        sourcePath: "app_store_assets/app_store_connect_screenshots/iphone_6_9_1320x2868/01.png",
         fileName: "03_local_by_design.png",
         kicker: "LOCAL",
         title: "Local by design",
         subtitle: "Open from Files or Photos. Images stay on device unless you share them."
     ),
     Slide(
-        sourcePath: "/Users/ziyan/Desktop/Simulator Screenshot - iPhone 17 - 2026-05-13 at 16.40.14.png",
+        sourcePath: "app_store_assets/app_store_connect_screenshots/iphone_6_9_1320x2868/01.png",
         fileName: "04_export_clean_copies.png",
         kicker: "EXPORT",
         title: "Export clean copies",
         subtitle: "Save to Files, Photos, or Share with PNG and JPEG options."
     ),
     Slide(
-        sourcePath: "/Users/ziyan/Desktop/Simulator Screenshot - iPhone 17 - 2026-05-13 at 17.18.56.png",
+        sourcePath: "app_store_assets/app_store_connect_screenshots/iphone_6_9_1320x2868/01.png",
         fileName: "05_cover_multiple_areas.png",
         kicker: "COVER",
         title: "Cover multiple areas",
         subtitle: "Use black or white solid blocks to match the image and hide sensitive details."
     ),
     Slide(
-        sourcePath: "/Users/ziyan/Desktop/Simulator Screenshot - iPhone 17 - 2026-05-13 at 16.38.36.png",
+        sourcePath: "app_store_assets/app_store_connect_screenshots/iphone_6_9_1320x2868/03.png",
         fileName: "06_two_privacy_tools.png",
         kicker: "WORKFLOW",
         title: "Two privacy tools",

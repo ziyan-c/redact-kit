@@ -292,7 +292,7 @@ class _CompletionNoticeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: redactKitBorderColor),
+        border: Border.all(color: redactKitSubtleBorderColor),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x26000000),
@@ -328,7 +328,7 @@ class _CompletionNoticeCard extends StatelessWidget {
                     style: const TextStyle(
                       color: redactKitPrimaryTextColor,
                       fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -423,8 +423,9 @@ class _DesktopLayout extends ConsumerWidget {
                       onOpen: controller.openImage,
                       onOpenPhotos: controller.openPhotoLibrary,
                       emptyTitle: 'Choose an image',
-                      openLabel: 'Open from Files',
+                      openLabel: 'Files',
                       fitPadding: 28,
+                      showPhotoButton: true,
                       compactEmptyState: true,
                     ),
                   ),
@@ -456,7 +457,7 @@ class _DesktopLayout extends ConsumerWidget {
                       onFinishRedaction: controller.finishPdfRedaction,
                       onOpen: controller.openPdf,
                       emptyTitle: 'Choose a PDF',
-                      openLabel: 'Open PDF',
+                      openLabel: 'Files',
                       fitPadding: 28,
                       compactEmptyState: true,
                     ),
@@ -504,6 +505,9 @@ class _MobileLayout extends ConsumerWidget {
     final canExport = mode == _WorkspaceMode.pdf
         ? state.hasPdf && !state.isExporting
         : state.hasImage && !state.isExporting;
+    final hasDocument = mode == _WorkspaceMode.pdf
+        ? state.hasPdf
+        : state.hasImage;
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -550,7 +554,7 @@ class _MobileLayout extends ConsumerWidget {
                 onOpen: controller.openImage,
                 onOpenPhotos: controller.openPhotoLibrary,
                 emptyTitle: 'Choose an image',
-                openLabel: 'Open from Files',
+                openLabel: 'Files',
                 margin: EdgeInsets.zero,
                 showBorder: false,
                 fitPadding: 14,
@@ -567,7 +571,7 @@ class _MobileLayout extends ConsumerWidget {
                 onFinishRedaction: controller.finishPdfRedaction,
                 onOpen: controller.openPdf,
                 emptyTitle: 'Choose a PDF',
-                openLabel: 'Open PDF',
+                openLabel: 'Files',
                 margin: EdgeInsets.zero,
                 showBorder: false,
                 fitPadding: 14,
@@ -580,7 +584,8 @@ class _MobileLayout extends ConsumerWidget {
               ),
             },
           ),
-          if (mode == _WorkspaceMode.redact || mode == _WorkspaceMode.pdf)
+          if ((mode == _WorkspaceMode.redact || mode == _WorkspaceMode.pdf) &&
+              hasDocument)
             _MobileBottomBar(
               canUndo: mode == _WorkspaceMode.pdf
                   ? state.currentPdfRedactions.isNotEmpty
@@ -642,12 +647,7 @@ class _TabletLayout extends ConsumerWidget {
               ? state.currentPdfRedactions.isNotEmpty
               : state.hasRedactions,
           canExport: canExport,
-          isOpening: state.isOpening,
           isExporting: state.isExporting,
-          onOpen: mode == _WorkspaceMode.pdf
-              ? controller.openPdf
-              : controller.openImage,
-          onOpenPhotos: controller.openPhotoLibrary,
           onUndo: mode == _WorkspaceMode.pdf
               ? controller.undoPdfRedaction
               : controller.undo,
@@ -670,6 +670,17 @@ class _TabletLayout extends ConsumerWidget {
               ? () => _showPdfExportSheet(context)
               : null,
         ),
+        if (mode == _WorkspaceMode.redact || mode == _WorkspaceMode.pdf)
+          _TabletSourceStrip(
+            pdfMode: mode == _WorkspaceMode.pdf,
+            isOpening: state.isOpening,
+            onFiles: mode == _WorkspaceMode.pdf
+                ? controller.openPdf
+                : controller.openImage,
+            onPhotos: mode == _WorkspaceMode.redact
+                ? controller.openPhotoLibrary
+                : null,
+          ),
         if (mode == _WorkspaceMode.pdf && state.hasPdf)
           _PdfPageNavigationStrip(
             currentPage: state.pdfCurrentPage,
@@ -691,7 +702,7 @@ class _TabletLayout extends ConsumerWidget {
               onOpen: controller.openImage,
               onOpenPhotos: controller.openPhotoLibrary,
               emptyTitle: 'Choose an image',
-              openLabel: 'Open from Files',
+              openLabel: 'Files',
               margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               fitPadding: 16,
               showPhotoButton: true,
@@ -706,7 +717,7 @@ class _TabletLayout extends ConsumerWidget {
               onFinishRedaction: controller.finishPdfRedaction,
               onOpen: controller.openPdf,
               emptyTitle: 'Choose a PDF',
-              openLabel: 'Open PDF',
+              openLabel: 'Files',
               margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               fitPadding: 16,
               enablePanZoom: true,
@@ -730,10 +741,7 @@ class _TabletTopBar extends StatelessWidget {
     required this.canUndo,
     required this.canClear,
     required this.canExport,
-    required this.isOpening,
     required this.isExporting,
-    required this.onOpen,
-    required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
     required this.onExport,
@@ -749,10 +757,7 @@ class _TabletTopBar extends StatelessWidget {
   final bool canUndo;
   final bool canClear;
   final bool canExport;
-  final bool isOpening;
   final bool isExporting;
-  final VoidCallback onOpen;
-  final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
   final VoidCallback onExport;
@@ -767,8 +772,8 @@ class _TabletTopBar extends StatelessWidget {
       height: 76,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(bottom: BorderSide(color: redactKitSubtleBorderColor)),
       ),
       child: Row(
         children: <Widget>[
@@ -780,7 +785,7 @@ class _TabletTopBar extends StatelessWidget {
                 const Text(
                   'Redact Kit',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -799,25 +804,6 @@ class _TabletTopBar extends StatelessWidget {
             child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
           ),
           if (mode != _WorkspaceMode.metadata) ...<Widget>[
-            _TopBarIconButton(
-              tooltip: mode == _WorkspaceMode.pdf
-                  ? 'Open PDF'
-                  : 'Open from Files',
-              onPressed: isOpening ? null : onOpen,
-              icon: isOpening
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CupertinoActivityIndicator(radius: 9),
-                    )
-                  : const Icon(Icons.folder_open),
-              tonal: true,
-            ),
-            if (mode == _WorkspaceMode.redact)
-              _TopBarIconButton(
-                tooltip: 'Open from Photos',
-                onPressed: isOpening ? null : onOpenPhotos,
-                icon: const Icon(Icons.photo_library_outlined),
-              ),
             _TopBarIconButton(
               tooltip: 'Undo',
               onPressed: canUndo ? onUndo : null,
@@ -875,6 +861,57 @@ class _TabletTopBar extends StatelessWidget {
   }
 }
 
+class _TabletSourceStrip extends StatelessWidget {
+  const _TabletSourceStrip({
+    required this.pdfMode,
+    required this.isOpening,
+    required this.onFiles,
+    required this.onPhotos,
+  });
+
+  final bool pdfMode;
+  final bool isOpening;
+  final VoidCallback onFiles;
+  final VoidCallback? onPhotos;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: const BoxDecoration(
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(bottom: BorderSide(color: redactKitSubtleBorderColor)),
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: pdfMode ? 180 : 156,
+            child: _SourceActionButton(
+              onPressed: isOpening ? null : onFiles,
+              icon: pdfMode ? CupertinoIcons.doc_text : CupertinoIcons.folder,
+              label: 'Files',
+              primary: true,
+            ),
+          ),
+          if (!pdfMode && onPhotos != null) ...<Widget>[
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 156,
+              child: _SourceActionButton(
+                onPressed: isOpening ? null : onPhotos,
+                icon: CupertinoIcons.photo_on_rectangle,
+                label: 'Photos',
+              ),
+            ),
+          ],
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopBarIconButton extends StatelessWidget {
   const _TopBarIconButton({
     required this.tooltip,
@@ -919,10 +956,10 @@ class _ModeSwitcherBand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(bottom: BorderSide(color: redactKitSubtleBorderColor)),
       ),
       child: _ModeSwitcher(mode: mode, onModeChanged: onModeChanged),
     );
@@ -978,18 +1015,18 @@ class _CupertinoSegmentedControl<T extends Object> extends StatelessWidget {
       width: double.infinity,
       child: CupertinoSlidingSegmentedControl<T>(
         groupValue: selected,
-        padding: const EdgeInsets.all(3),
-        backgroundColor: redactKitSubtleBorderColor,
+        padding: const EdgeInsets.all(2),
+        backgroundColor: redactKitDisabledFillColor,
         thumbColor: Colors.white,
         children: <T, Widget>{
           for (final value in values)
             value: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: _CupertinoSegmentContent(
                 icon: cupertinoIconFor?.call(value),
                 label: labelFor(value),
                 selected: value == selected,
-                selectedColor: redactKitAccentColor,
+                selectedColor: redactKitPrimaryTextColor,
               ),
             ),
         },
@@ -1061,22 +1098,23 @@ class _CupertinoActionButton extends StatelessWidget {
     final enabled = onPressed != null;
     final foreground = enabled
         ? switch (emphasis) {
-            _CupertinoControlEmphasis.filled => Colors.white,
+            _CupertinoControlEmphasis.filled => redactKitAccentColor,
             _ => redactKitAccentColor,
           }
         : redactKitDisabledColor;
     final background = switch (emphasis) {
       _CupertinoControlEmphasis.filled =>
-        enabled ? redactKitAccentColor : redactKitBorderColor,
+        enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
       _CupertinoControlEmphasis.tonal =>
         enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
-      _CupertinoControlEmphasis.outlined => Colors.white,
+      _CupertinoControlEmphasis.outlined => redactKitSecondaryBackgroundColor,
     };
     final borderColor = switch (emphasis) {
-      _CupertinoControlEmphasis.filled => Colors.transparent,
+      _CupertinoControlEmphasis.filled =>
+        enabled ? redactKitAccentBorderColor : redactKitSubtleBorderColor,
       _CupertinoControlEmphasis.tonal => Colors.transparent,
       _CupertinoControlEmphasis.outlined =>
-        enabled ? redactKitBorderColor : redactKitSubtleBorderColor,
+        enabled ? redactKitSubtleBorderColor : redactKitSubtleBorderColor,
     };
 
     return LayoutBuilder(
@@ -1090,7 +1128,7 @@ class _CupertinoActionButton extends StatelessWidget {
               minHeight: 40,
               minWidth: constraints.hasBoundedWidth ? constraints.maxWidth : 0,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(8),
@@ -1146,18 +1184,19 @@ class _CupertinoIconControl extends StatelessWidget {
     final foreground = enabled
         ? switch (emphasis) {
             _CupertinoControlEmphasis.filled => Colors.white,
-            _ => redactKitAccentColor,
+            _CupertinoControlEmphasis.tonal => redactKitAccentColor,
+            _CupertinoControlEmphasis.outlined => redactKitMutedTextColor,
           }
         : redactKitDisabledColor;
     final background = switch (emphasis) {
       _CupertinoControlEmphasis.filled =>
-        enabled ? redactKitAccentColor : redactKitBorderColor,
+        enabled ? redactKitAccentColor : redactKitSubtleBorderColor,
       _CupertinoControlEmphasis.tonal =>
         enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
-      _CupertinoControlEmphasis.outlined => Colors.white,
+      _CupertinoControlEmphasis.outlined => redactKitSecondaryBackgroundColor,
     };
     final borderColor = emphasis == _CupertinoControlEmphasis.outlined
-        ? redactKitBorderColor
+        ? redactKitSubtleBorderColor
         : Colors.transparent;
 
     return CupertinoButton(
@@ -1165,8 +1204,8 @@ class _CupertinoIconControl extends StatelessWidget {
       minimumSize: Size.zero,
       onPressed: onPressed,
       child: Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: background,
@@ -1319,7 +1358,7 @@ class _PdfPageNumberFieldState extends State<_PdfPageNumberField> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: redactKitBorderColor),
+        border: Border.all(color: redactKitSubtleBorderColor),
         borderRadius: BorderRadius.circular(8),
       ),
       onSubmitted: _submit,
@@ -1426,18 +1465,19 @@ class _MobileTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = switch (mode) {
       _WorkspaceMode.redact =>
-        '$redactionCount redaction${redactionCount == 1 ? '' : 's'}',
-      _WorkspaceMode.pdf => hasPdf ? '$redactionCount on page' : 'No PDF',
-      _WorkspaceMode.metadata =>
-        hasMetadataInput ? 'Input selected' : 'No input',
+        redactionCount > 0
+            ? '$redactionCount redaction${redactionCount == 1 ? '' : 's'}'
+            : null,
+      _WorkspaceMode.pdf => hasPdf ? '$redactionCount on page' : null,
+      _WorkspaceMode.metadata => hasMetadataInput ? 'Input selected' : null,
     };
 
     return Container(
-      constraints: const BoxConstraints(minHeight: 72),
-      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+      constraints: const BoxConstraints(minHeight: 62),
+      padding: const EdgeInsets.fromLTRB(16, 7, 10, 7),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(bottom: BorderSide(color: redactKitSubtleBorderColor)),
       ),
       child: Row(
         children: <Widget>[
@@ -1449,9 +1489,9 @@ class _MobileTopBar extends StatelessWidget {
                 const Text(
                   'Redact Kit',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 Row(
                   children: <Widget>[
                     Flexible(
@@ -1465,8 +1505,10 @@ class _MobileTopBar extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _StatusPill(text: summary),
+                    if (summary != null) ...<Widget>[
+                      const SizedBox(width: 8),
+                      _StatusPill(text: summary),
+                    ],
                   ],
                 ),
               ],
@@ -1504,20 +1546,19 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: redactKitSystemGreenFillColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: redactKitBorderColor),
+        color: redactKitDisabledFillColor,
+        borderRadius: BorderRadius.circular(7),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         child: Text(
           text,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            color: redactKitAccentColor,
+            color: redactKitMutedTextColor,
             fontSize: 11,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -1553,16 +1594,16 @@ class _MobileBottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 78,
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+      height: 72,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: redactKitBorderColor)),
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(top: BorderSide(color: redactKitSubtleBorderColor)),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 18,
-            offset: Offset(0, -6),
+            color: Color(0x0D000000),
+            blurRadius: 14,
+            offset: Offset(0, -4),
           ),
         ],
       ),
@@ -1622,7 +1663,7 @@ class _MobileToolbarItem extends StatelessWidget {
     final foreground = primary && enabled
         ? Colors.white
         : enabled
-        ? redactKitPrimaryTextColor
+        ? redactKitMutedTextColor
         : redactKitDisabledColor;
     final background = primary && enabled
         ? redactKitAccentColor
@@ -1636,20 +1677,20 @@ class _MobileToolbarItem extends StatelessWidget {
           padding: EdgeInsets.zero,
           minimumSize: Size.zero,
           child: Container(
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 60),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 56),
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(8),
             ),
             child: IconTheme.merge(
-              data: IconThemeData(color: foreground, size: 22),
+              data: IconThemeData(color: foreground, size: 21),
               child: DefaultTextStyle.merge(
                 style: TextStyle(color: foreground),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Icon(icon, size: 22),
+                    Icon(icon, size: 21),
                     const SizedBox(height: 3),
                     FittedBox(
                       fit: BoxFit.scaleDown,
@@ -1658,7 +1699,7 @@ class _MobileToolbarItem extends StatelessWidget {
                         maxLines: 1,
                         style: const TextStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -1784,9 +1825,7 @@ void _showExportSheet(BuildContext context) {
                             icon: state.isExporting
                                 ? const SizedBox.square(
                                     dimension: 18,
-                                    child: CupertinoActivityIndicator(
-                                      color: Colors.white,
-                                    ),
+                                    child: CupertinoActivityIndicator(),
                                   )
                                 : const Icon(Icons.save_alt),
                             label: 'Save to Files',
@@ -1935,9 +1974,7 @@ void _showPdfExportSheet(BuildContext context) {
                           icon: state.isExporting
                               ? const SizedBox.square(
                                   dimension: 18,
-                                  child: CupertinoActivityIndicator(
-                                    color: Colors.white,
-                                  ),
+                                  child: CupertinoActivityIndicator(),
                                 )
                               : const Icon(Icons.save_alt),
                           label: 'Save Redacted PDF',
@@ -1959,54 +1996,220 @@ void _showPdfExportSheet(BuildContext context) {
 void _showRedactDetails(BuildContext context) {
   _showDetails(
     context,
-    _RedactDetailsContent(onClose: () => Navigator.of(context).pop()),
+    title: 'Image Privacy',
+    children: const <Widget>[
+      _PrivacyPoint(
+        icon: Icons.grid_on_outlined,
+        title: 'Pixel-level redaction',
+        body:
+            'Redaction boxes are burned into the raster as 100% opaque solid pixels. The exported image has no editable layer, hidden mask, or original pixels under the box.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.auto_fix_high_outlined,
+        title: 'Rebuilt from visible pixels',
+        body:
+            'Export creates a new PNG or JPEG from the rendered pixel buffer. It does not copy the original file container forward.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.cleaning_services_outlined,
+        title: 'Metadata removed',
+        body:
+            'Image export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.badge_outlined,
+        title: 'File names',
+        body:
+            'Exports start with a generic name. The Keep filename option only preserves the visible file name, not image metadata.',
+      ),
+      _PrivacyPoint(
+        icon: CupertinoIcons.slider_horizontal_3,
+        title: 'Format choice',
+        body:
+            'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
+      ),
+    ],
   );
 }
 
 void _showPdfDetails(BuildContext context) {
   _showDetails(
     context,
-    _PdfDetailsContent(onClose: () => Navigator.of(context).pop()),
+    title: 'PDF Privacy',
+    children: const <Widget>[
+      _PrivacyPoint(
+        icon: Icons.picture_as_pdf_outlined,
+        title: 'Flattened PDF export',
+        body:
+            'Each PDF page is rendered as an image, redaction boxes are burned into that image, and a new PDF is generated from the cleaned pages. The exported page size follows the original PDF page size.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.layers_clear_outlined,
+        title: 'Original PDF structure removed',
+        body:
+            'The clean PDF does not copy the original text layer, annotations, forms, links, embedded files, hidden OCR text, or original document metadata.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.cleaning_services_outlined,
+        title: 'Metadata-only PDFs',
+        body:
+            'Metadata Only can flatten one PDF without drawing boxes. It removes original PDF metadata and hidden document structure, but text selection and search are not preserved.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.search_off_outlined,
+        title: 'Tradeoff',
+        body:
+            'Flattened PDFs are safer and simpler to verify, but the exported document behaves like scanned pages. Text outside redactions is visible, but not selectable or searchable.',
+      ),
+    ],
   );
 }
 
 void _showMetadataDetails(BuildContext context) {
   _showDetails(
     context,
-    _MetadataDetailsContent(onClose: () => Navigator.of(context).pop()),
+    title: 'Metadata Only',
+    children: const <Widget>[
+      _PrivacyPoint(
+        icon: Icons.photo_library_outlined,
+        title: 'Image and PDF input',
+        body:
+            'Choose files or a folder from one input button. Files can be images or PDFs, and folder input scans supported images and PDFs inside it. This mode does not draw redaction boxes.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.auto_fix_high_outlined,
+        title: 'Fast clean path',
+        body:
+            'PNG-to-PNG and JPEG-to-JPEG outputs strip metadata directly from a copied file container. Format changes decode visible pixels and encode a fresh clean file.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.cleaning_services_outlined,
+        title: 'Metadata removed',
+        body:
+            'PNG output keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.drive_file_rename_outline,
+        title: 'File names',
+        body:
+            'Generic names are used unless Keep filenames is enabled. Preserved names are sanitized and deduplicated inside the output folder.',
+      ),
+      _PrivacyPoint(
+        icon: Icons.folder_copy_outlined,
+        title: 'Output',
+        body:
+            'Images and PDFs save into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed.',
+      ),
+    ],
   );
 }
 
-void _showDetails(BuildContext context, Widget content) {
-  if (MediaQuery.sizeOf(context).width < 600) {
+void _showDetails(
+  BuildContext context, {
+  required String title,
+  required List<Widget> children,
+}) {
+  final compact = MediaQuery.sizeOf(context).width < 600;
+  final sheet = _InfoDetailsSheet(
+    title: title,
+    bottomSheet: compact,
+    children: children,
+  );
+
+  if (compact) {
     showCupertinoModalPopup<void>(
       context: context,
-      builder: (context) => _CupertinoSheetSurface(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.86,
-          ),
-          child: content,
-        ),
-      ),
+      builder: (context) => sheet,
     );
     return;
   }
 
-  showCupertinoDialog<void>(
-    context: context,
-    builder: (context) => Center(
-      child: CupertinoPopupSurface(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 560,
-            maxHeight: MediaQuery.sizeOf(context).height * 0.82,
-          ),
-          child: content,
+  showCupertinoDialog<void>(context: context, builder: (context) => sheet);
+}
+
+class _InfoDetailsSheet extends StatelessWidget {
+  const _InfoDetailsSheet({
+    required this.title,
+    required this.children,
+    required this.bottomSheet,
+  });
+
+  final String title;
+  final List<Widget> children;
+  final bool bottomSheet;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final availableHeight = math.max(
+      260.0,
+      bottomSheet ? size.height * 0.78 : size.height - 96,
+    );
+    final sheetHeight = math.min(availableHeight, bottomSheet ? 640.0 : 560.0);
+    final sheetWidth = bottomSheet
+        ? size.width
+        : math.min(560.0, size.width - 32);
+    final surface = CupertinoPopupSurface(
+      child: SizedBox(
+        width: sheetWidth,
+        height: sheetHeight,
+        child: Column(
+          children: <Widget>[
+            Container(
+              height: 56,
+              padding: const EdgeInsets.only(left: 20, right: 10),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: redactKitSubtleBorderColor),
+                ),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: redactKitPrimaryTextColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _CupertinoTooltip(
+                    message: 'Close',
+                    child: _CupertinoIconControl(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(CupertinoIcons.xmark),
+                      emphasis: _CupertinoControlEmphasis.outlined,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomSheet ? 22 : 16),
+                children: children,
+              ),
+            ),
+          ],
         ),
       ),
-    ),
-  );
+    );
+
+    if (bottomSheet) {
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: SafeArea(top: false, left: false, right: false, child: surface),
+      );
+    }
+
+    return Center(
+      child: SafeArea(minimum: const EdgeInsets.all(16), child: surface),
+    );
+  }
 }
 
 class _CupertinoSheetSurface extends StatelessWidget {
@@ -2049,204 +2252,6 @@ class _CupertinoTooltip extends StatelessWidget {
   }
 }
 
-class _RedactDetailsContent extends StatelessWidget {
-  const _RedactDetailsContent({required this.onClose});
-
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'Image Privacy',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-              ),
-              _CupertinoTooltip(
-                message: 'Close',
-                child: _CupertinoIconControl(
-                  onPressed: onClose,
-                  icon: const Icon(CupertinoIcons.xmark),
-                  emphasis: _CupertinoControlEmphasis.outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const _PrivacyPoint(
-            icon: Icons.grid_on_outlined,
-            title: 'Pixel-level redaction',
-            body:
-                'Redaction boxes are burned into the raster as 100% opaque solid pixels. The exported image has no editable layer, hidden mask, or original pixels under the box.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.auto_fix_high_outlined,
-            title: 'Rebuilt from visible pixels',
-            body:
-                'Export creates a new PNG or JPEG from the rendered pixel buffer. It does not copy the original file container forward.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.cleaning_services_outlined,
-            title: 'Metadata removed',
-            body:
-                'Image export always rebuilds the image and removes metadata. PNG keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG removes APP0-APP15 and COM segments.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.badge_outlined,
-            title: 'File names',
-            body:
-                'Exports start with a generic name. The Keep filename option only preserves the visible file name, not image metadata.',
-          ),
-          const _PrivacyPoint(
-            icon: CupertinoIcons.slider_horizontal_3,
-            title: 'Format choice',
-            body:
-                'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PdfDetailsContent extends StatelessWidget {
-  const _PdfDetailsContent({required this.onClose});
-
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'PDF Privacy',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-              ),
-              _CupertinoTooltip(
-                message: 'Close',
-                child: _CupertinoIconControl(
-                  onPressed: onClose,
-                  icon: const Icon(CupertinoIcons.xmark),
-                  emphasis: _CupertinoControlEmphasis.outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const _PrivacyPoint(
-            icon: Icons.picture_as_pdf_outlined,
-            title: 'Flattened PDF export',
-            body:
-                'Each PDF page is rendered as an image, redaction boxes are burned into that image, and a new PDF is generated from the cleaned pages. The exported page size follows the original PDF page size.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.layers_clear_outlined,
-            title: 'Original PDF structure removed',
-            body:
-                'The clean PDF does not copy the original text layer, annotations, forms, links, embedded files, hidden OCR text, or original document metadata.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.cleaning_services_outlined,
-            title: 'Metadata-only PDFs',
-            body:
-                'Metadata Only can flatten one PDF without drawing boxes. It removes original PDF metadata and hidden document structure, but text selection and search are not preserved.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.search_off_outlined,
-            title: 'Tradeoff',
-            body:
-                'Flattened PDFs are safer and simpler to verify, but the exported document behaves like scanned pages. Text outside redactions is visible, but not selectable or searchable.',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetadataDetailsContent extends StatelessWidget {
-  const _MetadataDetailsContent({required this.onClose});
-
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'Metadata Only',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-              ),
-              _CupertinoTooltip(
-                message: 'Close',
-                child: _CupertinoIconControl(
-                  onPressed: onClose,
-                  icon: const Icon(CupertinoIcons.xmark),
-                  emphasis: _CupertinoControlEmphasis.outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const _PrivacyPoint(
-            icon: Icons.photo_library_outlined,
-            title: 'Image and PDF input',
-            body:
-                'Choose files or a folder from one input button. Files can be images or PDFs, and folder input scans supported images and PDFs inside it. This mode does not draw redaction boxes.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.auto_fix_high_outlined,
-            title: 'Fast clean path',
-            body:
-                'PNG-to-PNG and JPEG-to-JPEG outputs strip metadata directly from a copied file container. Format changes decode visible pixels and encode a fresh clean file.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.cleaning_services_outlined,
-            title: 'Metadata removed',
-            body:
-                'PNG output keeps only IHDR, PLTE, IDAT, and IEND chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.drive_file_rename_outline,
-            title: 'File names',
-            body:
-                'Generic names are used unless Keep filenames is enabled. Preserved names are sanitized and deduplicated inside the output folder.',
-          ),
-          const _PrivacyPoint(
-            icon: Icons.folder_copy_outlined,
-            title: 'Output',
-            body:
-                'Images and PDFs save into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed.',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PrivacyPoint extends StatelessWidget {
   const _PrivacyPoint({
     required this.icon,
@@ -2275,7 +2280,7 @@ class _PrivacyPoint extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -2341,6 +2346,51 @@ String _metadataExportFormatDescription(RedactionState state) {
   return 'No supported files selected.';
 }
 
+bool _metadataInputHasFolder(List<MetadataInputDisplayItem> items) {
+  return items.any((item) => item.kind == MetadataInputDisplayKind.folder);
+}
+
+String _metadataChooserTitle(bool hasInput, bool hasFolderInput) {
+  if (hasFolderInput) return 'Folder Selected';
+  return 'Files or Folder';
+}
+
+String _metadataChooserDescription(bool hasInput, bool hasFolderInput) {
+  if (hasFolderInput) {
+    return 'Remove the folder to choose files or another folder.';
+  }
+  if (hasInput) {
+    return 'Add more images or PDFs to this list.';
+  }
+  return 'Files and folders can include images or PDFs.';
+}
+
+IconData _metadataChooserIcon(bool hasInput, bool hasFolderInput) {
+  if (hasFolderInput) return CupertinoIcons.folder;
+  if (hasInput) return CupertinoIcons.plus;
+  return CupertinoIcons.folder_badge_plus;
+}
+
+VoidCallback? _metadataChooserAction({
+  required bool canClean,
+  required bool hasInput,
+  required bool hasFolderInput,
+  required RedactionController controller,
+}) {
+  if (!canClean || hasFolderInput) return null;
+  if (hasInput) return controller.addMetadataFiles;
+  return controller.chooseMetadataFilesOrFolder;
+}
+
+VoidCallback? _metadataPhotosAction({
+  required bool canClean,
+  required bool hasFolderInput,
+  required RedactionController controller,
+}) {
+  if (!canClean || hasFolderInput) return null;
+  return controller.addMetadataPhotos;
+}
+
 class _DesktopMetadataCleanerView extends StatelessWidget {
   const _DesktopMetadataCleanerView({
     required this.state,
@@ -2359,6 +2409,10 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
         state.hasMetadataInput && state.metadataHasImages;
     final showPdfExportControls =
         state.hasMetadataInput && state.metadataHasPdfs;
+    final inputItems = controller.metadataInputItems;
+    final hasFolderInput = _metadataInputHasFolder(inputItems);
+    final openingPhotos =
+        state.isOpening && state.status.toLowerCase().contains('photo');
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -2380,7 +2434,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                             'Metadata Only',
                             style: TextStyle(
                               fontSize: 26,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           SizedBox(height: 5),
@@ -2388,7 +2442,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                             'Clean image or PDF metadata without drawing redaction boxes.',
                             style: TextStyle(
                               color: redactKitMutedTextColor,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
@@ -2411,25 +2465,54 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                         children: <Widget>[
                           _DesktopMetadataPanel(
                             title: 'Input',
-                            icon: Icons.add_photo_alternate_outlined,
+                            icon: CupertinoIcons.tray_arrow_down,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: <Widget>[
                                 _MetadataInputChooserButton(
-                                  onPressed: canClean
-                                      ? controller.chooseMetadataFilesOrFolder
-                                      : null,
-                                  loading: state.isOpening,
+                                  title: _metadataChooserTitle(
+                                    state.hasMetadataInput,
+                                    hasFolderInput,
+                                  ),
+                                  description: _metadataChooserDescription(
+                                    state.hasMetadataInput,
+                                    hasFolderInput,
+                                  ),
+                                  icon: _metadataChooserIcon(
+                                    state.hasMetadataInput,
+                                    hasFolderInput,
+                                  ),
+                                  onPressed: _metadataChooserAction(
+                                    canClean: canClean,
+                                    hasInput: state.hasMetadataInput,
+                                    hasFolderInput: hasFolderInput,
+                                    controller: controller,
+                                  ),
+                                  loading: state.isOpening && !openingPhotos,
+                                ),
+                                const SizedBox(height: 10),
+                                _MetadataInputChooserButton(
+                                  title: 'Photos',
+                                  description: hasFolderInput
+                                      ? 'Remove the folder before adding photos.'
+                                      : 'Choose images from Photos.',
+                                  icon: CupertinoIcons.photo_on_rectangle,
+                                  onPressed: _metadataPhotosAction(
+                                    canClean: canClean,
+                                    hasFolderInput: hasFolderInput,
+                                    controller: controller,
+                                  ),
+                                  loading: openingPhotos,
                                 ),
                                 const SizedBox(height: 14),
-                                _MetadataInputSummary(
-                                  label:
-                                      state.metadataInputLabel ??
-                                      'No input selected',
-                                  description:
-                                      state.metadataInputDescription ??
-                                      'Choose files or a folder containing images and PDFs.',
-                                  selected: state.hasMetadataInput,
+                                _MetadataInputList(
+                                  items: inputItems,
+                                  emptyLabel: 'No input selected',
+                                  emptyDescription:
+                                      'Choose files, photos, or a folder containing images and PDFs.',
+                                  onRemove: canClean
+                                      ? controller.removeMetadataInputAt
+                                      : null,
                                 ),
                               ],
                             ),
@@ -2437,7 +2520,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                           const SizedBox(height: 14),
                           _DesktopMetadataPanel(
                             title: 'Output',
-                            icon: Icons.folder_open,
+                            icon: CupertinoIcons.folder,
                             child: _MetadataOutputFolderPicker(
                               displayName:
                                   state.metadataOutputDirectoryDisplayName ??
@@ -2526,11 +2609,9 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                               icon: state.isExporting
                                   ? const SizedBox.square(
                                       dimension: 18,
-                                      child: CupertinoActivityIndicator(
-                                        color: Colors.white,
-                                      ),
+                                      child: CupertinoActivityIndicator(),
                                     )
-                                  : const Icon(Icons.play_arrow),
+                                  : const Icon(CupertinoIcons.play_fill),
                               label: 'Start',
                               emphasis: _CupertinoControlEmphasis.filled,
                             ),
@@ -2584,14 +2665,14 @@ class _DesktopMetadataPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: redactKitSecondaryBackgroundColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: redactKitBorderColor),
+        border: Border.all(color: redactKitSubtleBorderColor),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x0F000000),
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: Color(0x08000000),
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -2600,14 +2681,15 @@ class _DesktopMetadataPanel extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(icon, size: 18, color: redactKitAccentColor),
+              Icon(icon, size: 17, color: redactKitMutedTextColor),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
+                    color: redactKitPrimaryTextColor,
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -2623,10 +2705,16 @@ class _DesktopMetadataPanel extends StatelessWidget {
 
 class _MetadataInputChooserButton extends StatelessWidget {
   const _MetadataInputChooserButton({
+    required this.title,
+    required this.description,
+    required this.icon,
     required this.onPressed,
     this.loading = false,
   });
 
+  final String title;
+  final String description;
+  final IconData icon;
   final VoidCallback? onPressed;
   final bool loading;
 
@@ -2638,55 +2726,72 @@ class _MetadataInputChooserButton extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 86),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
+        color: enabled ? redactKitControlFillColor : redactKitDisabledFillColor,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: enabled ? redactKitAccentColor : redactKitBorderColor,
-          width: enabled ? 1.4 : 1,
+          color: enabled
+              ? redactKitControlBorderColor
+              : redactKitSubtleBorderColor,
         ),
       ),
       child: Row(
         children: <Widget>[
           DecoratedBox(
             decoration: BoxDecoration(
-              color: enabled ? redactKitAccentColor : redactKitBorderColor,
+              color: enabled
+                  ? redactKitSecondaryBackgroundColor
+                  : redactKitDisabledFillColor,
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: enabled
+                    ? redactKitControlBorderColor
+                    : redactKitSubtleBorderColor,
+              ),
             ),
             child: SizedBox.square(
-              dimension: 44,
+              dimension: 42,
               child: Center(
                 child: loading
                     ? const SizedBox.square(
                         dimension: 19,
-                        child: CupertinoActivityIndicator(color: Colors.white),
+                        child: CupertinoActivityIndicator(),
                       )
-                    : const Icon(
-                        CupertinoIcons.folder_badge_plus,
-                        color: Colors.white,
-                        size: 24,
+                    : Icon(
+                        icon,
+                        color: enabled
+                            ? redactKitAccentColor
+                            : redactKitDisabledColor,
+                        size: 23,
                       ),
               ),
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 Text(
-                  'Choose Files or Folder',
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: enabled
+                        ? redactKitControlTextColor
+                        : redactKitDisabledColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
-                  'Files and folders supported. Files can be images or PDFs.',
+                  description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: redactKitMutedTextColor,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                     height: 1.25,
                   ),
                 ),
@@ -2696,23 +2801,17 @@ class _MetadataInputChooserButton extends StatelessWidget {
           const SizedBox(width: 10),
           Icon(
             CupertinoIcons.chevron_forward,
-            color: enabled ? redactKitAccentColor : redactKitDisabledColor,
+            color: enabled ? redactKitControlTextColor : redactKitDisabledColor,
           ),
         ],
       ),
     );
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        minimumSize: Size.zero,
-        onPressed: onPressed,
-        child: content,
-      ),
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      onPressed: onPressed,
+      child: content,
     );
   }
 }
@@ -2884,7 +2983,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
             style: const TextStyle(
               color: redactKitMutedTextColor,
               height: 1.35,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
           if (outputPath != null || onOpenFolder != null) ...<Widget>[
@@ -2902,7 +3001,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
                         style: const TextStyle(
                           color: redactKitMutedTextColor,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -2911,7 +3010,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   _CupertinoActionButton(
                     onPressed: onOpenFolder,
-                    icon: const Icon(Icons.folder_open),
+                    icon: const Icon(CupertinoIcons.folder),
                     label: 'Open Folder',
                     emphasis: _CupertinoControlEmphasis.outlined,
                   ),
@@ -2937,7 +3036,7 @@ class _ResultCountPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: redactKitGroupedFillColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: redactKitBorderColor),
+        border: Border.all(color: redactKitSubtleBorderColor),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
@@ -2948,7 +3047,7 @@ class _ResultCountPill extends StatelessWidget {
               value,
               style: const TextStyle(
                 color: redactKitPrimaryTextColor,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(width: 5),
@@ -2984,6 +3083,10 @@ class _MobileMetadataCleanerView extends StatelessWidget {
         state.hasMetadataInput && state.metadataHasImages;
     final showPdfExportControls =
         state.hasMetadataInput && state.metadataHasPdfs;
+    final inputItems = controller.metadataInputItems;
+    final hasFolderInput = _metadataInputHasFolder(inputItems);
+    final openingPhotos =
+        state.isOpening && state.status.toLowerCase().contains('photo');
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -2997,7 +3100,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 const Expanded(
                   child: Text(
                     'Metadata Only',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
                   ),
                 ),
                 _StatusPill(
@@ -3010,27 +3113,57 @@ class _MobileMetadataCleanerView extends StatelessWidget {
             const SizedBox(height: 16),
             _MobileMetadataSection(
               title: 'Input',
-              icon: Icons.add_photo_alternate_outlined,
+              icon: CupertinoIcons.tray_arrow_down,
               children: <Widget>[
                 _MetadataInputChooserButton(
-                  onPressed: canClean
-                      ? controller.chooseMetadataFilesOrFolder
-                      : null,
+                  title: _metadataChooserTitle(
+                    state.hasMetadataInput,
+                    hasFolderInput,
+                  ),
+                  description: _metadataChooserDescription(
+                    state.hasMetadataInput,
+                    hasFolderInput,
+                  ),
+                  icon: _metadataChooserIcon(
+                    state.hasMetadataInput,
+                    hasFolderInput,
+                  ),
+                  onPressed: _metadataChooserAction(
+                    canClean: canClean,
+                    hasInput: state.hasMetadataInput,
+                    hasFolderInput: hasFolderInput,
+                    controller: controller,
+                  ),
+                  loading: state.isOpening && !openingPhotos,
+                ),
+                const SizedBox(height: 10),
+                _MetadataInputChooserButton(
+                  title: 'Photos',
+                  description: hasFolderInput
+                      ? 'Remove the folder before adding photos.'
+                      : 'Choose images from Photos.',
+                  icon: CupertinoIcons.photo_on_rectangle,
+                  onPressed: _metadataPhotosAction(
+                    canClean: canClean,
+                    hasFolderInput: hasFolderInput,
+                    controller: controller,
+                  ),
+                  loading: openingPhotos,
                 ),
                 const SizedBox(height: 12),
-                _MetadataInputSummary(
-                  label: state.metadataInputLabel ?? 'No input selected',
-                  description:
-                      state.metadataInputDescription ??
-                      'Choose files or a folder containing images and PDFs.',
-                  selected: state.hasMetadataInput,
+                _MetadataInputList(
+                  items: inputItems,
+                  emptyLabel: 'No input selected',
+                  emptyDescription:
+                      'Choose files, photos, or a folder containing images and PDFs.',
+                  onRemove: canClean ? controller.removeMetadataInputAt : null,
                 ),
               ],
             ),
             const SizedBox(height: 12),
             _MobileMetadataSection(
               title: 'Output',
-              icon: Icons.folder_open,
+              icon: CupertinoIcons.folder,
               children: <Widget>[
                 _MetadataOutputFolderPicker(
                   displayName:
@@ -3109,9 +3242,9 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 icon: state.isExporting
                     ? const SizedBox.square(
                         dimension: 18,
-                        child: CupertinoActivityIndicator(color: Colors.white),
+                        child: CupertinoActivityIndicator(),
                       )
-                    : const Icon(Icons.play_arrow),
+                    : const Icon(CupertinoIcons.play_fill),
                 label: 'Start',
                 emphasis: _CupertinoControlEmphasis.filled,
               ),
@@ -3140,8 +3273,8 @@ class _MobileMetadataSection extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: redactKitBorderColor),
+        color: redactKitSecondaryBackgroundColor,
+        border: Border.all(color: redactKitSubtleBorderColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -3149,14 +3282,14 @@ class _MobileMetadataSection extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(icon, size: 18, color: redactKitAccentColor),
+              Icon(icon, size: 17, color: redactKitMutedTextColor),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -3184,8 +3317,9 @@ class _MetadataProgressBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: redactKitBorderColor),
-        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitSubtleBorderColor),
+        color: redactKitSecondaryBackgroundColor,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3194,7 +3328,7 @@ class _MetadataProgressBanner extends StatelessWidget {
             status,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800),
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           _CupertinoProgressBar(value: clampedProgress),
@@ -3238,16 +3372,66 @@ class _CupertinoProgressBar extends StatelessWidget {
   }
 }
 
-class _MetadataInputSummary extends StatelessWidget {
-  const _MetadataInputSummary({
-    required this.label,
-    required this.description,
-    required this.selected,
+class _MetadataInputList extends StatelessWidget {
+  const _MetadataInputList({
+    required this.items,
+    required this.emptyLabel,
+    required this.emptyDescription,
+    required this.onRemove,
   });
 
+  final List<MetadataInputDisplayItem> items;
+  final String emptyLabel;
+  final String emptyDescription;
+  final ValueChanged<int>? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return _MetadataInputRow(
+        icon: CupertinoIcons.tray,
+        label: emptyLabel,
+        detail: emptyDescription,
+        selected: false,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        for (var index = 0; index < items.length; index += 1) ...<Widget>[
+          if (index > 0) const SizedBox(height: 8),
+          _MetadataInputRow(
+            icon: _metadataInputDisplayIcon(items[index].kind),
+            label: items[index].label,
+            detail: items[index].detail,
+            selected: true,
+            onRemove: onRemove == null
+                ? null
+                : () {
+                    onRemove!(index);
+                  },
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MetadataInputRow extends StatelessWidget {
+  const _MetadataInputRow({
+    required this.icon,
+    required this.label,
+    required this.detail,
+    required this.selected,
+    this.onRemove,
+  });
+
+  final IconData icon;
   final String label;
-  final String description;
+  final String detail;
   final bool selected;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -3256,14 +3440,16 @@ class _MetadataInputSummary extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 54),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        border: Border.all(color: redactKitBorderColor),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: redactKitSubtleBorderColor),
         color: selected ? Colors.white : redactKitGroupedFillColor,
       ),
       child: Row(
         children: <Widget>[
           Icon(
-            selected ? Icons.check_circle_outline : Icons.inbox_outlined,
+            icon,
             color: selected ? redactKitAccentColor : redactKitMutedTextColor,
+            size: 21,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -3275,11 +3461,11 @@ class _MetadataInputSummary extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  description,
+                  detail,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -3291,10 +3477,31 @@ class _MetadataInputSummary extends StatelessWidget {
               ],
             ),
           ),
+          if (onRemove != null) ...<Widget>[
+            const SizedBox(width: 8),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              onPressed: onRemove,
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: redactKitDisabledColor,
+                size: 22,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+IconData _metadataInputDisplayIcon(MetadataInputDisplayKind kind) {
+  return switch (kind) {
+    MetadataInputDisplayKind.image => CupertinoIcons.photo,
+    MetadataInputDisplayKind.pdf => CupertinoIcons.doc_text,
+    MetadataInputDisplayKind.folder => CupertinoIcons.folder,
+  };
 }
 
 class _MetadataOutputFolderPicker extends StatelessWidget {
@@ -3327,8 +3534,9 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                border: Border.all(color: redactKitBorderColor),
-                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: redactKitSubtleBorderColor),
+                color: redactKitGroupedFillColor,
               ),
               child: Text(
                 displayName,
@@ -3336,7 +3544,7 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: redactKitMutedTextColor,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -3554,7 +3762,7 @@ class _CanvasArea extends ConsumerWidget {
                           child: _CupertinoActionButton(
                             onPressed: state.isOpening ? null : onOpenPhotos,
                             icon: const Icon(Icons.photo_library_outlined),
-                            label: 'Open from Photos',
+                            label: 'Photos',
                             emphasis: _CupertinoControlEmphasis.tonal,
                           ),
                         ),
@@ -3643,7 +3851,7 @@ class _MobileCanvasEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 340),
+      constraints: const BoxConstraints(maxWidth: 304),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22),
         child: Column(
@@ -3651,48 +3859,119 @@ class _MobileCanvasEmptyState extends StatelessWidget {
           children: <Widget>[
             DecoratedBox(
               decoration: BoxDecoration(
-                color: redactKitSystemGreenFillColor,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: redactKitBorderColor),
+                color: redactKitAccentFillColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: redactKitAccentBorderColor),
               ),
               child: const SizedBox.square(
-                dimension: 58,
+                dimension: 62,
                 child: Icon(
-                  Icons.privacy_tip_outlined,
+                  CupertinoIcons.lock_shield_fill,
                   color: redactKitAccentColor,
                   size: 30,
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: _CupertinoActionButton(
-                onPressed: isOpening ? null : onOpen,
-                icon: const Icon(Icons.folder_open),
-                label: openLabel,
-                emphasis: _CupertinoControlEmphasis.filled,
+              style: const TextStyle(
+                color: redactKitPrimaryTextColor,
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
               ),
+            ),
+            const SizedBox(height: 20),
+            _SourceActionButton(
+              onPressed: isOpening ? null : onOpen,
+              icon: CupertinoIcons.folder,
+              label: openLabel,
+              primary: true,
             ),
             if (showPhotoButton && onOpenPhotos != null) ...<Widget>[
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: _CupertinoActionButton(
-                  onPressed: isOpening ? null : onOpenPhotos,
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: 'Open from Photos',
-                  emphasis: _CupertinoControlEmphasis.tonal,
-                ),
+              _SourceActionButton(
+                onPressed: isOpening ? null : onOpenPhotos,
+                icon: CupertinoIcons.photo_on_rectangle,
+                label: 'Photos',
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceActionButton extends StatelessWidget {
+  const _SourceActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.primary = false,
+  });
+
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final String label;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final foreground = !enabled
+        ? redactKitDisabledColor
+        : redactKitControlTextColor;
+    final background = !enabled
+        ? redactKitDisabledFillColor
+        : primary
+        ? redactKitControlFillColor
+        : redactKitControlSecondaryFillColor;
+    final borderColor = enabled
+        ? redactKitControlBorderColor
+        : redactKitSubtleBorderColor;
+
+    return SizedBox(
+      width: double.infinity,
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        onPressed: onPressed,
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: borderColor),
+          ),
+          child: IconTheme.merge(
+            data: IconThemeData(color: foreground, size: 18),
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                color: foreground,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(icon, size: 18),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -3966,15 +4245,8 @@ class _TopBar extends StatelessWidget {
       height: 76,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: redactKitBorderColor)),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Color(0x0F000000),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
+        color: redactKitSecondaryBackgroundColor,
+        border: Border(bottom: BorderSide(color: redactKitSubtleBorderColor)),
       ),
       child: Row(
         children: <Widget>[
@@ -3997,7 +4269,7 @@ class _TopBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: redactKitGroupedFillColor,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: redactKitBorderColor),
+                border: Border.all(color: redactKitSubtleBorderColor),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
@@ -4005,9 +4277,7 @@ class _TopBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     _DesktopToolbarAction(
-                      message: mode == _WorkspaceMode.pdf
-                          ? 'Open PDF'
-                          : 'Open from Files',
+                      message: 'Files',
                       onPressed: isOpening ? null : onOpen,
                       icon: isOpening
                           ? const SizedBox.square(
@@ -4019,7 +4289,7 @@ class _TopBar extends StatelessWidget {
                     ),
                     if (mode == _WorkspaceMode.redact)
                       _DesktopToolbarAction(
-                        message: 'Open from Photos',
+                        message: 'Photos',
                         onPressed: isOpening ? null : onOpenPhotos,
                         icon: const Icon(Icons.photo_library_outlined),
                       ),
@@ -4095,14 +4365,14 @@ class _DesktopAppTitle extends StatelessWidget {
       children: <Widget>[
         DecoratedBox(
           decoration: BoxDecoration(
-            color: redactKitSystemGreenFillColor,
+            color: redactKitAccentFillColor,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: redactKitBorderColor),
+            border: Border.all(color: redactKitSubtleBorderColor),
           ),
           child: const SizedBox.square(
             dimension: 36,
             child: Icon(
-              Icons.privacy_tip_outlined,
+              CupertinoIcons.lock_shield_fill,
               color: redactKitAccentColor,
               size: 20,
             ),
@@ -4111,7 +4381,7 @@ class _DesktopAppTitle extends StatelessWidget {
         const SizedBox(width: 10),
         const Text(
           'Redact Kit',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -4130,7 +4400,7 @@ class _DesktopStatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: redactKitGroupedFillColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: redactKitBorderColor),
+        border: Border.all(color: redactKitSubtleBorderColor),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -4189,7 +4459,7 @@ class _ToolbarDivider extends StatelessWidget {
       width: 1,
       height: 24,
       margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: redactKitBorderColor,
+      color: redactKitSubtleBorderColor,
     );
   }
 }
@@ -4495,9 +4765,7 @@ class _PdfSidePanel extends StatelessWidget {
                     icon: state.isExporting
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: CupertinoActivityIndicator(
-                              color: Colors.white,
-                            ),
+                            child: CupertinoActivityIndicator(),
                           )
                         : const Icon(Icons.save_alt),
                     label: 'Save Redacted PDF',

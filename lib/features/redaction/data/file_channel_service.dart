@@ -121,41 +121,15 @@ class FileChannelService {
       );
     }
 
+    return chooseMetadataFiles();
+  }
+
+  Future<MetadataPickedInput?> chooseMetadataFiles() async {
     final files = await file_selector.openFiles(
       acceptedTypeGroups: _metadataFileTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: 'Choose Files',
     );
-    if (files.isEmpty) return null;
-
-    final images = <MetadataInputImage>[];
-    final pdfs = <MetadataInputPdf>[];
-    for (final file in files) {
-      if (_isSupportedImagePath(file.name)) {
-        images.add(
-          _supportsDirectoryPicker
-              ? MetadataInputImage(sourceName: file.name, sourcePath: file.path)
-              : MetadataInputImage(
-                  bytes: await file.readAsBytes(),
-                  sourceName: file.name,
-                ),
-        );
-        continue;
-      }
-      if (_isSupportedPdfPath(file.name)) {
-        pdfs.add(
-          _supportsDirectoryPicker
-              ? MetadataInputPdf(sourceName: file.name, sourcePath: file.path)
-              : MetadataInputPdf(
-                  bytes: await file.readAsBytes(),
-                  sourceName: file.name,
-                ),
-        );
-      }
-    }
-
-    if (images.isEmpty && pdfs.isEmpty) return null;
-
-    return MetadataPickedInput(images: images, pdfs: pdfs);
+    return _metadataPickedInputFromFiles(files);
   }
 
   Future<bool> deleteTemporaryMetadataInputPaths(Iterable<String> paths) async {
@@ -187,6 +161,50 @@ class FileChannelService {
     }
 
     return pdfs;
+  }
+
+  Future<MetadataPickedInput?> _metadataPickedInputFromFiles(
+    List<file_selector.XFile> files,
+  ) async {
+    if (files.isEmpty) return null;
+
+    final images = <MetadataInputImage>[];
+    final pdfs = <MetadataInputPdf>[];
+    var ignoredCount = 0;
+    for (final file in files) {
+      if (_isSupportedImagePath(file.name)) {
+        images.add(
+          _supportsDirectoryPicker
+              ? MetadataInputImage(sourceName: file.name, sourcePath: file.path)
+              : MetadataInputImage(
+                  bytes: await file.readAsBytes(),
+                  sourceName: file.name,
+                ),
+        );
+        continue;
+      }
+      if (_isSupportedPdfPath(file.name)) {
+        pdfs.add(
+          _supportsDirectoryPicker
+              ? MetadataInputPdf(sourceName: file.name, sourcePath: file.path)
+              : MetadataInputPdf(
+                  bytes: await file.readAsBytes(),
+                  sourceName: file.name,
+                ),
+        );
+        continue;
+      }
+
+      ignoredCount += 1;
+    }
+
+    if (images.isEmpty && pdfs.isEmpty) return null;
+
+    return MetadataPickedInput(
+      images: images,
+      pdfs: pdfs,
+      ignoredCount: ignoredCount,
+    );
   }
 
   Future<Uint8List?> openPhotoLibraryBytes() async {

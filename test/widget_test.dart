@@ -28,7 +28,7 @@ void main() {
 
     final app = tester.widget<CupertinoApp>(find.byType(CupertinoApp));
     expect(app.theme?.primaryColor, redactKitAccentColor);
-    expect(redactKitAccentColor, const Color(0xFF007AFF));
+    expect(redactKitAccentColor, const Color(0xFF2F6F73));
     expect(app.theme?.scaffoldBackgroundColor, redactKitBackgroundColor);
   });
 
@@ -37,7 +37,7 @@ void main() {
 
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.byIcon(Icons.folder_open), findsWidgets);
-    expect(find.text('Open from Files'), findsOneWidget);
+    expect(find.text('Files'), findsWidgets);
   });
 
   testWidgets('uses compact controls on phone width', (
@@ -54,15 +54,13 @@ void main() {
 
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.text('macOS / iOS'), findsNothing);
-    expect(find.text('Open from Files'), findsOneWidget);
-    expect(find.text('Open from Photos'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
     expect(find.text('Photos'), findsOneWidget);
     expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
-    expect(find.text('Undo'), findsOneWidget);
-    expect(find.text('Clear'), findsOneWidget);
-    expect(find.text('Export'), findsOneWidget);
+    expect(find.text('Undo'), findsNothing);
+    expect(find.text('Clear'), findsNothing);
+    expect(find.text('Export'), findsNothing);
 
     await tester.tap(find.byIcon(CupertinoIcons.info));
     await tester.pumpAndSettle();
@@ -74,9 +72,10 @@ void main() {
     await tester.tap(find.byIcon(CupertinoIcons.xmark));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Export'));
+    await tester.tap(find.byIcon(CupertinoIcons.slider_horizontal_3));
     await tester.pumpAndSettle();
 
+    expect(find.text('Export'), findsOneWidget);
     expect(find.text('Format'), findsOneWidget);
     expect(find.text('PNG'), findsWidgets);
     expect(find.text('JPEG'), findsOneWidget);
@@ -98,11 +97,12 @@ void main() {
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Output: app Cleaned folder'), findsOneWidget);
     expect(find.text('Keep filenames'), findsOneWidget);
-    expect(find.text('Choose Files or Folder'), findsOneWidget);
+    expect(find.text('Files or Folder'), findsOneWidget);
     expect(
-      find.text('Files and folders supported. Files can be images or PDFs.'),
+      find.text('Files and folders can include images or PDFs.'),
       findsOneWidget,
     );
+    expect(find.text('Photos'), findsWidgets);
     expect(find.text('Start'), findsOneWidget);
   });
 
@@ -118,7 +118,8 @@ void main() {
 
     expect(find.text('Redact Kit'), findsOneWidget);
     expect(find.text('macOS / iOS'), findsNothing);
-    expect(find.text('Open from Files'), findsOneWidget);
+    expect(find.text('Files'), findsWidgets);
+    expect(find.text('Photos'), findsWidgets);
     expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
     expect(find.text('Format'), findsNothing);
@@ -148,7 +149,7 @@ void main() {
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Output: app Cleaned folder'), findsOneWidget);
     expect(find.text('Keep filenames'), findsOneWidget);
-    expect(find.text('Choose Files or Folder'), findsOneWidget);
+    expect(find.text('Files or Folder'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
   });
 
@@ -167,6 +168,8 @@ void main() {
     expect(find.text('macOS / iOS'), findsNothing);
     expect(find.text('Image'), findsWidgets);
     expect(find.text('Metadata'), findsOneWidget);
+    expect(find.text('Files'), findsWidgets);
+    expect(find.text('Photos'), findsWidgets);
     expect(find.text('Format'), findsOneWidget);
     expect(find.text('PNG'), findsWidgets);
     expect(find.text('JPEG'), findsWidgets);
@@ -185,11 +188,12 @@ void main() {
 
     expect(find.text('Metadata Only'), findsOneWidget);
     expect(find.byIcon(CupertinoIcons.info), findsOneWidget);
-    expect(find.text('Choose Files or Folder'), findsOneWidget);
+    expect(find.text('Files or Folder'), findsOneWidget);
     expect(
-      find.text('Files and folders supported. Files can be images or PDFs.'),
+      find.text('Files and folders can include images or PDFs.'),
       findsOneWidget,
     );
+    expect(find.text('Photos'), findsWidgets);
     expect(find.text('No input selected'), findsOneWidget);
     expect(find.text('Output'), findsOneWidget);
     expect(find.text('Choose input to preview output'), findsOneWidget);
@@ -508,6 +512,151 @@ void main() {
     );
   });
 
+  testWidgets('metadata input queue can add and remove files', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 1, height: 1)
+      ..setPixelRgb(0, 0, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'first.png',
+        sourcePath: '/tmp/redact-kit-metadata-inputs/copy/first.png',
+      ),
+      batchImages: <MetadataInputImage>[
+        MetadataInputImage(
+          bytes: pngBytes,
+          sourceName: 'second.png',
+          sourcePath: '/tmp/source/second.png',
+        ),
+      ],
+      batchPdfs: <MetadataInputPdf>[
+        MetadataInputPdf(
+          bytes: Uint8List.fromList(<int>[1, 2, 3]),
+          sourceName: 'paper.pdf',
+          sourcePath: '/tmp/source/paper.pdf',
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+
+    expect(container.read(redactionControllerProvider).metadataInputCount, 1);
+    expect(controller.metadataInputItems.map((item) => item.label), <String>[
+      'first.png',
+    ]);
+
+    await tester.runAsync(controller.addMetadataFiles);
+
+    expect(container.read(redactionControllerProvider).metadataInputCount, 3);
+    expect(
+      container.read(redactionControllerProvider).metadataHasImages,
+      isTrue,
+    );
+    expect(container.read(redactionControllerProvider).metadataHasPdfs, isTrue);
+    expect(
+      container.read(redactionControllerProvider).metadataInputLabel,
+      '3 files',
+    );
+    expect(controller.metadataInputItems.map((item) => item.label), <String>[
+      'first.png',
+      'second.png',
+      'paper.pdf',
+    ]);
+
+    await tester.runAsync(() => controller.removeMetadataInputAt(0));
+
+    expect(service.deletedTemporaryInputPaths, <String>[
+      '/tmp/redact-kit-metadata-inputs/copy/first.png',
+    ]);
+    expect(container.read(redactionControllerProvider).metadataInputCount, 2);
+    expect(controller.metadataInputItems.map((item) => item.label), <String>[
+      'second.png',
+      'paper.pdf',
+    ]);
+
+    await tester.runAsync(() => controller.removeMetadataInputAt(1));
+
+    expect(container.read(redactionControllerProvider).metadataInputCount, 1);
+    expect(
+      container.read(redactionControllerProvider).metadataHasPdfs,
+      isFalse,
+    );
+    expect(
+      container.read(redactionControllerProvider).metadataInputLabel,
+      '1 image',
+    );
+  });
+
+  testWidgets('metadata input queue can add photos to files', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 1, height: 1)
+      ..setPixelRgb(0, 0, 255, 255, 255);
+    final pngBytes = Uint8List.fromList(image_lib.encodePng(source));
+    final service = _FakeFileChannelService(
+      openBytes: pngBytes,
+      metadataImage: MetadataInputImage(
+        bytes: pngBytes,
+        sourceName: 'first.png',
+      ),
+      photoImages: <MetadataInputImage>[
+        MetadataInputImage(bytes: pngBytes, sourceName: 'photo-a.jpg'),
+        MetadataInputImage(bytes: pngBytes, sourceName: 'photo-b.jpg'),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+
+    await tester.runAsync(controller.chooseMetadataImageFromFiles);
+    await tester.runAsync(controller.addMetadataPhotos);
+
+    expect(container.read(redactionControllerProvider).metadataInputCount, 3);
+    expect(
+      container.read(redactionControllerProvider).metadataInputLabel,
+      '3 images',
+    );
+    expect(controller.metadataInputItems.map((item) => item.label), <String>[
+      'first.png',
+      'photo-a.jpg',
+      'photo-b.jpg',
+    ]);
+
+    await tester.runAsync(() => controller.removeMetadataInputAt(1));
+
+    expect(container.read(redactionControllerProvider).metadataInputCount, 2);
+    expect(controller.metadataInputItems.map((item) => item.label), <String>[
+      'first.png',
+      'photo-b.jpg',
+    ]);
+  });
+
   testWidgets('metadata output field opens the full output value', (
     WidgetTester tester,
   ) async {
@@ -551,7 +700,7 @@ void main() {
 
     await tester.tap(find.text('Metadata'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Choose Files or Folder'));
+    await tester.tap(find.text('Files or Folder'));
     await tester.pumpAndSettle();
 
     const outputPath =
@@ -1470,6 +1619,7 @@ class _FakeFileChannelService extends FileChannelService {
     this.pdfBytes,
     this.batchImages = const <MetadataInputImage>[],
     this.batchPdfs = const <MetadataInputPdf>[],
+    this.photoImages = const <MetadataInputImage>[],
     this.metadataImage,
     this.metadataPdf,
     this.metadataFolder,
@@ -1482,6 +1632,7 @@ class _FakeFileChannelService extends FileChannelService {
   final Uint8List? pdfBytes;
   final List<MetadataInputImage> batchImages;
   final List<MetadataInputPdf> batchPdfs;
+  final List<MetadataInputImage> photoImages;
   final MetadataInputImage? metadataImage;
   final MetadataInputPdf? metadataPdf;
   final MetadataPickedFolder? metadataFolder;
@@ -1534,6 +1685,10 @@ class _FakeFileChannelService extends FileChannelService {
   Future<MetadataInputImage?> chooseMetadataImageFile() async => metadataImage;
 
   @override
+  Future<List<MetadataInputImage>> chooseMetadataPhotoImages() async =>
+      photoImages;
+
+  @override
   Future<bool> deleteTemporaryMetadataInputPaths(Iterable<String> paths) async {
     final copiedPaths = paths.toList(growable: false);
     deletedTemporaryInputPaths.addAll(copiedPaths);
@@ -1563,6 +1718,12 @@ class _FakeFileChannelService extends FileChannelService {
       return MetadataPickedInput(pdfs: <MetadataInputPdf>[metadataPdf!]);
     }
     return null;
+  }
+
+  @override
+  Future<MetadataPickedInput?> chooseMetadataFiles() async {
+    if (batchImages.isEmpty && batchPdfs.isEmpty) return null;
+    return MetadataPickedInput(images: batchImages, pdfs: batchPdfs);
   }
 
   @override

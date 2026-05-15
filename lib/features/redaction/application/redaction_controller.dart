@@ -341,6 +341,161 @@ class RedactionController extends _$RedactionController {
     );
   }
 
+  Future<void> addMetadataFiles() async {
+    if (state.isOpening || state.isExporting) return;
+
+    final existingSelection = _metadataInputSelection;
+    if (existingSelection == null || existingSelection.isEmpty) {
+      await chooseMetadataFilesOrFolder();
+      return;
+    }
+
+    state = state.copyWith(isOpening: true, status: 'Adding files');
+
+    try {
+      final service = ref.read(fileChannelServiceProvider);
+      final pickedInput = await service.chooseMetadataFiles();
+      if (!ref.mounted) return;
+
+      final pickedSelection = pickedInput == null
+          ? null
+          : _pickedMetadataFilesInput(pickedInput);
+      if (pickedSelection == null || pickedSelection.isEmpty) {
+        state = state.copyWith(
+          isOpening: false,
+          status: 'No supported images or PDFs selected',
+        );
+        return;
+      }
+
+      final selection = existingSelection.appendFilesFrom(pickedSelection);
+      _metadataInputSelection = selection;
+      var nextState = _stateWithMetadataInput(
+        state,
+        selection,
+        status: 'Selected ${selection.inputLabel}',
+      );
+      nextState = await _stateWithPreviewedMetadataOutput(
+        nextState,
+        selection,
+        service,
+      );
+      if (!ref.mounted) return;
+      state = nextState.copyWith(isOpening: false);
+    } on PlatformException catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        isOpening: false,
+        status: error.message ?? 'Could not add metadata files',
+      );
+    } catch (_) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        isOpening: false,
+        status: 'Could not add metadata files',
+      );
+    }
+  }
+
+  Future<void> addMetadataPhotos() async {
+    if (state.isOpening || state.isExporting) return;
+
+    final existingSelection = _metadataInputSelection;
+    if (existingSelection == null || existingSelection.isEmpty) {
+      await chooseMetadataImagesFromPhotos();
+      return;
+    }
+
+    if (existingSelection.sources.any(
+      (source) => source.kind == MetadataInputDisplayKind.folder,
+    )) {
+      state = state.copyWith(status: 'Remove the folder before adding photos');
+      return;
+    }
+
+    state = state.copyWith(isOpening: true, status: 'Adding photos');
+
+    try {
+      final service = ref.read(fileChannelServiceProvider);
+      final images = await service.chooseMetadataPhotoImages();
+      if (!ref.mounted) return;
+
+      if (images.isEmpty) {
+        state = state.copyWith(isOpening: false, status: 'No photos selected');
+        return;
+      }
+
+      final selection = existingSelection.appendFilesFrom(
+        _photosMetadataInput(images),
+      );
+      _metadataInputSelection = selection;
+      var nextState = _stateWithMetadataInput(
+        state,
+        selection,
+        status: 'Selected ${selection.inputLabel}',
+      );
+      nextState = await _stateWithPreviewedMetadataOutput(
+        nextState,
+        selection,
+        service,
+      );
+      if (!ref.mounted) return;
+      state = nextState.copyWith(isOpening: false);
+    } on PlatformException catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        isOpening: false,
+        status: error.message ?? 'Could not add photos',
+      );
+    } catch (_) {
+      if (!ref.mounted) return;
+      state = state.copyWith(isOpening: false, status: 'Could not add photos');
+    }
+  }
+
+  Future<void> removeMetadataInputAt(int index) async {
+    if (state.isOpening || state.isExporting) return;
+
+    final selection = _metadataInputSelection;
+    if (selection == null || index < 0 || index >= selection.sources.length) {
+      return;
+    }
+
+    final removedSource = selection.sources[index];
+    final service = ref.read(fileChannelServiceProvider);
+    final nextSelection = selection.removingSourceAt(index);
+
+    await _deleteTemporaryMetadataSource(service, removedSource);
+    if (!ref.mounted) return;
+
+    if (nextSelection == null || nextSelection.isEmpty) {
+      _metadataInputSelection = null;
+      state = _stateWithoutMetadataInput(
+        state,
+        status: 'Removed ${removedSource.displayLabel}',
+      );
+      return;
+    }
+
+    _metadataInputSelection = nextSelection;
+    var nextState = _stateWithMetadataInput(
+      state,
+      nextSelection,
+      status: 'Removed ${removedSource.displayLabel}',
+    );
+    nextState = await _stateWithPreviewedMetadataOutput(
+      nextState,
+      nextSelection,
+      service,
+    );
+    if (!ref.mounted) return;
+    state = nextState;
+  }
+
+  List<MetadataInputDisplayItem> get metadataInputItems =>
+      _metadataInputSelection?.displayItems ??
+      const <MetadataInputDisplayItem>[];
+
   Future<void> chooseMetadataImageFromFiles() async {
     await _chooseMetadataInput(
       choosingStatus: 'Choosing image file',
@@ -1384,130 +1539,82 @@ Future<bool> _deleteTemporaryMetadataSelection(
   return service.deleteTemporaryMetadataInputPaths(selection.sourcePaths);
 }
 
-_MetadataInputSelection _singleFileMetadataInput(MetadataInputImage image) {
-  final sourceName =
-      image.sourceName ?? _lastPathComponent(image.sourcePath ?? 'image');
-  final baseName = _preservedBaseName(sourceName) ?? 'image';
+Future<bool> _deleteTemporaryMetadataSource(
+  FileChannelService service,
+  _MetadataInputSource source,
+) {
+  return service.deleteTemporaryMetadataInputPaths(source.sourcePaths);
+}
 
-  return _MetadataInputSelection(
-    images: <MetadataInputImage>[image],
-    pdfs: const <MetadataInputPdf>[],
-    inputLabel: '1 image',
-    inputDescription: sourceName,
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-    singleOutputBaseName: baseName,
-  );
+_MetadataInputSelection _singleFileMetadataInput(MetadataInputImage image) {
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    _MetadataInputSource.image(image),
+  ]);
 }
 
 _MetadataInputSelection _multiFileMetadataInput(
   List<MetadataInputImage> images,
 ) {
-  return _MetadataInputSelection(
-    images: images,
-    pdfs: const <MetadataInputPdf>[],
-    inputLabel: '${images.length} image${images.length == 1 ? '' : 's'}',
-    inputDescription: _inputPreview(images),
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-  );
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    for (final image in images) _MetadataInputSource.image(image),
+  ]);
 }
 
 _MetadataInputSelection _singlePdfMetadataInput(MetadataInputPdf pdf) {
-  final sourceName =
-      pdf.sourceName ?? _lastPathComponent(pdf.sourcePath ?? 'document');
-  final baseName = _preservedBaseName(sourceName) ?? 'document';
-
-  return _MetadataInputSelection(
-    images: const <MetadataInputImage>[],
-    pdfs: <MetadataInputPdf>[pdf],
-    inputLabel: '1 PDF',
-    inputDescription: sourceName,
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-    singleOutputBaseName: baseName,
-    singleOutputExtension: 'pdf',
-  );
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    _MetadataInputSource.pdf(pdf),
+  ]);
 }
 
 _MetadataInputSelection _multiPdfMetadataInput(List<MetadataInputPdf> pdfs) {
-  return _MetadataInputSelection(
-    images: const <MetadataInputImage>[],
-    pdfs: pdfs,
-    inputLabel: '${pdfs.length} PDF${pdfs.length == 1 ? '' : 's'}',
-    inputDescription: _pdfInputPreview(pdfs),
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-  );
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    for (final pdf in pdfs) _MetadataInputSource.pdf(pdf),
+  ]);
 }
 
 _MetadataInputSelection _folderMetadataInput(MetadataPickedFolder folder) {
-  final folderName = _lastPathComponent(folder.directoryPath);
-  final outputFolderName = _safeOutputFolderName(
-    '$folderName-metadata-removed',
-  );
-
-  return _MetadataInputSelection(
-    images: folder.images,
-    pdfs: folder.pdfs,
-    inputLabel: 'Folder: $folderName',
-    inputDescription: _folderInputDescription(folder),
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-    automaticOutputSubfolderName: outputFolderName,
-    ignoredCount: folder.ignoredCount,
-  );
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    _MetadataInputSource.folder(folder),
+  ]);
 }
 
 _MetadataInputSelection _photosMetadataInput(List<MetadataInputImage> images) {
-  return _MetadataInputSelection(
-    images: images,
-    pdfs: const <MetadataInputPdf>[],
-    inputLabel: '${images.length} photo${images.length == 1 ? '' : 's'}',
-    inputDescription: _inputPreview(images),
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-  );
+  return _MetadataInputSelection.fromSources(<_MetadataInputSource>[
+    for (final image in images) _MetadataInputSource.image(image, photo: true),
+  ]);
 }
 
 _MetadataInputSelection? _pickedMetadataInput(MetadataPickedInput input) {
-  if (input.isSingleFolderOnly) {
-    return _folderMetadataInput(input.folders.single);
-  }
-
-  final images = input.allImages;
-  final pdfs = input.allPdfs;
-  final ignoredCount = input.totalIgnoredCount;
-  if (images.isEmpty && pdfs.isEmpty) return null;
-
-  if (input.folders.isEmpty && ignoredCount == 0) {
-    if (images.length == 1 && pdfs.isEmpty) {
-      return _singleFileMetadataInput(images.single);
+  final sources = <_MetadataInputSource>[];
+  var ignoredCount = input.ignoredCount;
+  if (input.folders.isNotEmpty) {
+    sources.add(_MetadataInputSource.folder(input.folders.first));
+    for (final folder in input.folders.skip(1)) {
+      ignoredCount += folder.images.length + folder.pdfs.length;
+      ignoredCount += folder.ignoredCount;
     }
-    if (pdfs.length == 1 && images.isEmpty) {
-      return _singlePdfMetadataInput(pdfs.single);
-    }
-    if (pdfs.isEmpty) return _multiFileMetadataInput(images);
-    if (images.isEmpty) return _multiPdfMetadataInput(pdfs);
   }
+  sources.addAll(<_MetadataInputSource>[
+    for (final image in input.images) _MetadataInputSource.image(image),
+    for (final pdf in input.pdfs) _MetadataInputSource.pdf(pdf),
+  ]);
 
-  final imageCount = images.length;
-  final pdfCount = pdfs.length;
-  final fileCount = imageCount + pdfCount;
-  final parts = <String>[
-    if (imageCount > 0) '$imageCount image${imageCount == 1 ? '' : 's'}',
-    if (pdfCount > 0) '$pdfCount PDF${pdfCount == 1 ? '' : 's'}',
-    if (ignoredCount > 0) '$ignoredCount ignored',
+  if (sources.isEmpty) return null;
+  return _MetadataInputSelection.fromSources(
+    sources,
+    extraIgnoredCount: ignoredCount,
+  );
+}
+
+_MetadataInputSelection? _pickedMetadataFilesInput(MetadataPickedInput input) {
+  final sources = <_MetadataInputSource>[
+    for (final image in input.images) _MetadataInputSource.image(image),
+    for (final pdf in input.pdfs) _MetadataInputSource.pdf(pdf),
   ];
-
-  return _MetadataInputSelection(
-    images: images,
-    pdfs: pdfs,
-    inputLabel: '$fileCount file${fileCount == 1 ? '' : 's'}',
-    inputDescription: parts.join(', '),
-    defaultOutputDirectoryPath: null,
-    defaultOutputDirectoryDisplayName: 'Cleaned',
-    ignoredCount: ignoredCount,
+  if (sources.isEmpty) return null;
+  return _MetadataInputSelection.fromSources(
+    sources,
+    extraIgnoredCount: input.ignoredCount,
   );
 }
 
@@ -1525,6 +1632,23 @@ RedactionState _stateWithMetadataInput(
     metadataInputDescription: selection.inputDescription,
     metadataOutputDirectoryPath: output.directoryPath,
     metadataOutputDirectoryDisplayName: output.displayName,
+    status: status ?? state.status,
+  );
+}
+
+RedactionState _stateWithoutMetadataInput(
+  RedactionState state, {
+  String? status,
+}) {
+  return state.copyWith(
+    metadataInputCount: 0,
+    metadataHasImages: false,
+    metadataHasPdfs: false,
+    metadataInputLabel: null,
+    metadataInputDescription: null,
+    metadataOutputDirectoryPath: null,
+    metadataOutputDirectoryDisplayName: null,
+    metadataCleanProgress: null,
     status: status ?? state.status,
   );
 }
@@ -1548,35 +1672,110 @@ Future<RedactionState> _stateWithPreviewedMetadataOutput(
   );
 }
 
-class _MetadataInputSelection {
-  const _MetadataInputSelection({
+enum MetadataInputDisplayKind { image, pdf, folder }
+
+class MetadataInputDisplayItem {
+  const MetadataInputDisplayItem({
+    required this.kind,
+    required this.label,
+    required this.detail,
+  });
+
+  final MetadataInputDisplayKind kind;
+  final String label;
+  final String detail;
+}
+
+class _MetadataInputSource {
+  const _MetadataInputSource._({
+    required this.kind,
+    required this.displayLabel,
+    required this.displayDetail,
+    required this.identityKey,
     required this.images,
     required this.pdfs,
-    required this.inputLabel,
-    required this.inputDescription,
-    required this.defaultOutputDirectoryPath,
-    required this.defaultOutputDirectoryDisplayName,
+    this.ignoredCount = 0,
     this.singleOutputBaseName,
     this.singleOutputExtension,
     this.automaticOutputSubfolderName,
-    this.ignoredCount = 0,
-    this.selectedDestination,
+    this.photo = false,
+    this.directoryPath,
   });
 
+  factory _MetadataInputSource.image(
+    MetadataInputImage image, {
+    bool photo = false,
+  }) {
+    final sourceName =
+        image.sourceName ?? _lastPathComponent(image.sourcePath ?? 'image');
+    return _MetadataInputSource._(
+      kind: MetadataInputDisplayKind.image,
+      displayLabel: sourceName,
+      displayDetail: image.sourcePath ?? (photo ? 'Photo library' : 'Image'),
+      identityKey: 'image:${image.sourcePath ?? sourceName}',
+      images: <MetadataInputImage>[image],
+      pdfs: const <MetadataInputPdf>[],
+      singleOutputBaseName: _preservedBaseName(sourceName) ?? 'image',
+      photo: photo,
+    );
+  }
+
+  factory _MetadataInputSource.pdf(MetadataInputPdf pdf) {
+    final sourceName =
+        pdf.sourceName ?? _lastPathComponent(pdf.sourcePath ?? 'document');
+    return _MetadataInputSource._(
+      kind: MetadataInputDisplayKind.pdf,
+      displayLabel: sourceName,
+      displayDetail: pdf.sourcePath ?? 'PDF',
+      identityKey: 'pdf:${pdf.sourcePath ?? sourceName}',
+      images: const <MetadataInputImage>[],
+      pdfs: <MetadataInputPdf>[pdf],
+      singleOutputBaseName: _preservedBaseName(sourceName) ?? 'document',
+      singleOutputExtension: 'pdf',
+    );
+  }
+
+  factory _MetadataInputSource.folder(MetadataPickedFolder folder) {
+    final folderName = _lastPathComponent(folder.directoryPath);
+    return _MetadataInputSource._(
+      kind: MetadataInputDisplayKind.folder,
+      displayLabel: folderName,
+      displayDetail: _folderInputDescription(folder),
+      identityKey: 'folder:${folder.directoryPath}',
+      images: folder.images,
+      pdfs: folder.pdfs,
+      ignoredCount: folder.ignoredCount,
+      automaticOutputSubfolderName: _safeOutputFolderName(
+        '$folderName-metadata-removed',
+      ),
+      directoryPath: folder.directoryPath,
+    );
+  }
+
+  final MetadataInputDisplayKind kind;
+  final String displayLabel;
+  final String displayDetail;
+  final String identityKey;
   final List<MetadataInputImage> images;
   final List<MetadataInputPdf> pdfs;
-  final String inputLabel;
-  final String inputDescription;
-  final String? defaultOutputDirectoryPath;
-  final String defaultOutputDirectoryDisplayName;
+  final int ignoredCount;
   final String? singleOutputBaseName;
   final String? singleOutputExtension;
   final String? automaticOutputSubfolderName;
-  final int ignoredCount;
-  final MetadataCleanDestination? selectedDestination;
-  int get totalCount => images.length + pdfs.length;
-  bool get isEmpty => totalCount == 0;
+  final bool photo;
+  final String? directoryPath;
+
+  MetadataInputDisplayItem get displayItem => MetadataInputDisplayItem(
+    kind: kind,
+    label: kind == MetadataInputDisplayKind.folder
+        ? 'Folder: $displayLabel'
+        : displayLabel,
+    detail: displayDetail,
+  );
+
   Iterable<String> get sourcePaths sync* {
+    final folderPath = directoryPath;
+    if (folderPath != null && folderPath.isNotEmpty) yield folderPath;
     for (final image in images) {
       final path = image.sourcePath;
       if (path != null && path.isNotEmpty) yield path;
@@ -1586,30 +1785,128 @@ class _MetadataInputSelection {
       if (path != null && path.isNotEmpty) yield path;
     }
   }
+}
+
+class _MetadataInputSelection {
+  const _MetadataInputSelection._({
+    required this.sources,
+    required this.images,
+    required this.pdfs,
+    required this.inputLabel,
+    required this.inputDescription,
+    this.singleOutputBaseName,
+    this.singleOutputExtension,
+    this.automaticOutputSubfolderName,
+    this.ignoredCount = 0,
+    this.selectedDestination,
+  });
+
+  factory _MetadataInputSelection.fromSources(
+    List<_MetadataInputSource> sources, {
+    int extraIgnoredCount = 0,
+    MetadataCleanDestination? selectedDestination,
+  }) {
+    final normalizedSources = _dedupeMetadataSources(sources);
+    final images = <MetadataInputImage>[
+      for (final source in normalizedSources) ...source.images,
+    ];
+    final pdfs = <MetadataInputPdf>[
+      for (final source in normalizedSources) ...source.pdfs,
+    ];
+    final ignoredCount =
+        extraIgnoredCount +
+        normalizedSources.fold<int>(
+          0,
+          (total, source) => total + source.ignoredCount,
+        );
+    final singleSource = normalizedSources.length == 1
+        ? normalizedSources.single
+        : null;
+    final sourceLabel = _metadataSourceSelectionLabel(
+      sources: normalizedSources,
+      images: images,
+      pdfs: pdfs,
+    );
+    final sourceDescription = _metadataSourceSelectionDescription(
+      sources: normalizedSources,
+      images: images,
+      pdfs: pdfs,
+      ignoredCount: ignoredCount,
+    );
+
+    return _MetadataInputSelection._(
+      sources: normalizedSources,
+      images: images,
+      pdfs: pdfs,
+      inputLabel: sourceLabel,
+      inputDescription: sourceDescription,
+      singleOutputBaseName: singleSource?.singleOutputBaseName,
+      singleOutputExtension: singleSource?.singleOutputExtension,
+      automaticOutputSubfolderName: singleSource?.automaticOutputSubfolderName,
+      ignoredCount: ignoredCount,
+      selectedDestination: selectedDestination,
+    );
+  }
+
+  final List<_MetadataInputSource> sources;
+  final List<MetadataInputImage> images;
+  final List<MetadataInputPdf> pdfs;
+  final String inputLabel;
+  final String inputDescription;
+  final String? singleOutputBaseName;
+  final String? singleOutputExtension;
+  final String? automaticOutputSubfolderName;
+  final int ignoredCount;
+  final MetadataCleanDestination? selectedDestination;
+  int get totalCount => images.length + pdfs.length;
+  bool get isEmpty => totalCount == 0;
+  List<MetadataInputDisplayItem> get displayItems => <MetadataInputDisplayItem>[
+    for (final source in sources) source.displayItem,
+  ];
+  Iterable<String> get sourcePaths sync* {
+    for (final source in sources) {
+      yield* source.sourcePaths;
+    }
+  }
 
   _MetadataInputSelection withSelectedDestination(
     MetadataCleanDestination destination,
   ) {
-    return _MetadataInputSelection(
-      images: images,
-      pdfs: pdfs,
-      inputLabel: inputLabel,
-      inputDescription: inputDescription,
-      defaultOutputDirectoryPath: defaultOutputDirectoryPath,
-      defaultOutputDirectoryDisplayName: defaultOutputDirectoryDisplayName,
-      singleOutputBaseName: singleOutputBaseName,
-      singleOutputExtension: singleOutputExtension,
-      automaticOutputSubfolderName: automaticOutputSubfolderName,
-      ignoredCount: ignoredCount,
+    return _MetadataInputSelection.fromSources(
+      sources,
+      extraIgnoredCount: ignoredCount - _sourceIgnoredCount(sources),
       selectedDestination: destination,
     );
   }
 
+  _MetadataInputSelection appendFilesFrom(_MetadataInputSelection selection) {
+    final addedFileSources = selection.sources.where(
+      (source) => source.kind != MetadataInputDisplayKind.folder,
+    );
+    return _MetadataInputSelection.fromSources(
+      <_MetadataInputSource>[...sources, ...addedFileSources],
+      extraIgnoredCount:
+          ignoredCount -
+          _sourceIgnoredCount(sources) +
+          selection.ignoredCount -
+          _sourceIgnoredCount(selection.sources),
+      selectedDestination: selectedDestination,
+    );
+  }
+
+  _MetadataInputSelection? removingSourceAt(int index) {
+    final nextSources = <_MetadataInputSource>[...sources]..removeAt(index);
+    if (nextSources.isEmpty) return null;
+    return _MetadataInputSelection.fromSources(
+      nextSources,
+      extraIgnoredCount: ignoredCount - _sourceIgnoredCount(sources),
+      selectedDestination: selectedDestination,
+    );
+  }
+
   _MetadataResolvedOutput outputFor(ExportFormat format) {
-    final rootPath =
-        selectedDestination?.directoryPath ?? defaultOutputDirectoryPath;
-    final rootDisplayName =
-        selectedDestination?.displayName ?? defaultOutputDirectoryDisplayName;
+    final rootPath = selectedDestination?.directoryPath;
+    final rootDisplayName = selectedDestination?.displayName ?? 'Cleaned';
     final subfolderName = automaticOutputSubfolderName;
     final directoryPath = subfolderName == null
         ? rootPath
@@ -1639,6 +1936,75 @@ class _MetadataInputSelection {
       automaticFolderName: null,
     );
   }
+}
+
+List<_MetadataInputSource> _dedupeMetadataSources(
+  List<_MetadataInputSource> sources,
+) {
+  final seen = <String>{};
+  final deduped = <_MetadataInputSource>[];
+  var hasFolder = false;
+  for (final source in sources) {
+    if (source.kind == MetadataInputDisplayKind.folder) {
+      if (hasFolder) continue;
+      hasFolder = true;
+    }
+    if (!seen.add(source.identityKey)) continue;
+    deduped.add(source);
+  }
+  return deduped;
+}
+
+int _sourceIgnoredCount(List<_MetadataInputSource> sources) {
+  return sources.fold<int>(0, (total, source) => total + source.ignoredCount);
+}
+
+String _metadataSourceSelectionLabel({
+  required List<_MetadataInputSource> sources,
+  required List<MetadataInputImage> images,
+  required List<MetadataInputPdf> pdfs,
+}) {
+  if (sources.length == 1) {
+    final source = sources.single;
+    return switch (source.kind) {
+      MetadataInputDisplayKind.folder => 'Folder: ${source.displayLabel}',
+      MetadataInputDisplayKind.image => source.photo ? '1 photo' : '1 image',
+      MetadataInputDisplayKind.pdf => '1 PDF',
+    };
+  }
+
+  final imageCount = images.length;
+  final pdfCount = pdfs.length;
+  if (pdfCount == 0) {
+    final allPhotos = sources.every((source) => source.photo);
+    final noun = allPhotos ? 'photo' : 'image';
+    return '$imageCount $noun${imageCount == 1 ? '' : 's'}';
+  }
+  if (imageCount == 0) return '$pdfCount PDF${pdfCount == 1 ? '' : 's'}';
+
+  final fileCount = imageCount + pdfCount;
+  return '$fileCount file${fileCount == 1 ? '' : 's'}';
+}
+
+String _metadataSourceSelectionDescription({
+  required List<_MetadataInputSource> sources,
+  required List<MetadataInputImage> images,
+  required List<MetadataInputPdf> pdfs,
+  required int ignoredCount,
+}) {
+  if (sources.length == 1) return sources.single.displayDetail;
+
+  if (pdfs.isEmpty && ignoredCount == 0) return _inputPreview(images);
+  if (images.isEmpty && ignoredCount == 0) return _pdfInputPreview(pdfs);
+
+  final imageCount = images.length;
+  final pdfCount = pdfs.length;
+  final parts = <String>[
+    if (imageCount > 0) '$imageCount image${imageCount == 1 ? '' : 's'}',
+    if (pdfCount > 0) '$pdfCount PDF${pdfCount == 1 ? '' : 's'}',
+    if (ignoredCount > 0) '$ignoredCount ignored',
+  ];
+  return parts.join(', ');
 }
 
 class _MetadataResolvedOutput {
