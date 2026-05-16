@@ -24,11 +24,16 @@ struct SourceImage {
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
-let outputRoot = root.appendingPathComponent("app_store_assets/app_store_connect_screenshots")
+let baseOutputRoot = root.appendingPathComponent("app_store_assets/app_store_connect_screenshots")
+let isChineseImport = CommandLine.arguments.contains("--zh-Hans")
+let outputRoot = isChineseImport
+    ? baseOutputRoot.appendingPathComponent("zh-Hans")
+    : baseOutputRoot
 
 let phoneSources = try desktopImages(containing: "Simulator Screenshot - iPhone")
 let ipadSources = try desktopImages(containing: "Simulator Screenshot - iPad")
 let macSources = try desktopImages(containing: "Screenshot ")
+    .filter { !$0.lastPathComponent.contains("Simulator Screenshot") }
 
 guard phoneSources.count >= 3 else {
     throw error("Need at least 3 iPhone screenshots on Desktop.")
@@ -36,11 +41,11 @@ guard phoneSources.count >= 3 else {
 guard ipadSources.count >= 3 else {
     throw error("Need at least 3 iPad screenshots on Desktop.")
 }
-guard macSources.count >= 3 else {
+if !isChineseImport && macSources.count < 3 {
     throw error("Need at least 3 macOS screenshots on Desktop.")
 }
 
-let targetSets: [(sources: [URL], targets: [Target])] = [
+var targetSets: [(sources: [URL], targets: [Target])] = [
     (
         sources: Array(phoneSources.prefix(3)),
         targets: [
@@ -54,13 +59,18 @@ let targetSets: [(sources: [URL], targets: [Target])] = [
             Target(directory: "ipad_13_2752x2064", width: 2752, height: 2064, mode: .fill),
         ]
     ),
-    (
+]
+
+if !isChineseImport {
+    targetSets.append(
+        (
         sources: Array(macSources.prefix(3)),
         targets: [
             Target(directory: "macos_2880x1800", width: 2880, height: 1800, mode: .fit(background: NSColor.black)),
         ]
-    ),
-]
+        )
+    )
+}
 
 for set in targetSets {
     for target in set.targets {

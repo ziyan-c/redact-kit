@@ -8,15 +8,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/platform_style.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../application/redaction_controller.dart';
 import '../domain/export_format.dart';
 import '../domain/jpeg_quality_preset.dart';
+import '../domain/metadata_input_display.dart';
 import '../domain/pdf_quality_preset.dart';
 import '../domain/redaction_region.dart';
 import '../domain/redaction_state.dart';
+import '../domain/redaction_status.dart';
 import 'redaction_painter.dart';
 
 enum _WorkspaceMode { redact, pdf, metadata }
+
+extension _RedactKitL10nContext on BuildContext {
+  AppLocalizations get l10n => AppLocalizations.of(this);
+}
 
 class RedactWorkspace extends ConsumerStatefulWidget {
   const RedactWorkspace({super.key});
@@ -27,7 +34,7 @@ class RedactWorkspace extends ConsumerStatefulWidget {
 
 class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
   _WorkspaceMode _mode = _WorkspaceMode.redact;
-  String? _lastCompletionNoticeStatus;
+  RedactionStatus? _lastCompletionNoticeStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -136,11 +143,11 @@ class _RedactWorkspaceState extends ConsumerState<RedactWorkspace> {
 
     if (!previous.isExporting || next.isExporting) return;
 
-    final notice = _completionNoticeForStatus(next.status);
+    final notice = _completionNoticeForStatus(next.statusMessage, context.l10n);
     if (notice == null) return;
-    if (_lastCompletionNoticeStatus == next.status) return;
+    if (_lastCompletionNoticeStatus == next.statusMessage) return;
 
-    _lastCompletionNoticeStatus = next.status;
+    _lastCompletionNoticeStatus = next.statusMessage;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _showCompletionNotice(context, notice);
@@ -162,77 +169,348 @@ class _CompletionNotice {
   final _NoticeTone tone;
 }
 
-_CompletionNotice? _completionNoticeForStatus(String status) {
-  if (status.startsWith('Exported clean ')) {
-    return const _CompletionNotice(
-      title: 'Clean image exported',
-      message: 'Redactions are burned in and metadata is removed.',
+String _localizedStatus(RedactionStatus status, AppLocalizations l10n) {
+  final label = status.label ?? '';
+  final detail = status.detail;
+  final format = status.formatLabel ?? '';
+  final destination = status.destinationName ?? '';
+  final count = status.count ?? 0;
+  final pageNumber = status.pageNumber ?? 0;
+  final pageCount = status.pageCount ?? 0;
+  final current = status.current ?? 0;
+  final total = status.total ?? 0;
+  final savedCount = status.savedCount ?? 0;
+  final failedCount = status.failedCount ?? 0;
+  final ignoredCount = status.ignoredCount ?? 0;
+
+  return switch (status.kind) {
+    RedactionStatusKind.ready => l10n.ready,
+    RedactionStatusKind.openingImage => l10n.statusOpeningImage,
+    RedactionStatusKind.openingPhotoLibrary => l10n.statusOpeningPhotoLibrary,
+    RedactionStatusKind.openingPdf => l10n.statusOpeningPdf,
+    RedactionStatusKind.loadedImage => l10n.statusLoadedImage(
+      status.width ?? 0,
+      status.height ?? 0,
+    ),
+    RedactionStatusKind.adjustingCrop => l10n.statusAdjustingCrop,
+    RedactionStatusKind.croppingImage => l10n.statusCroppingImage,
+    RedactionStatusKind.imageCropped => l10n.statusImageCropped(
+      status.width ?? 0,
+      status.height ?? 0,
+    ),
+    RedactionStatusKind.cropCanceled => l10n.statusCropCanceled,
+    RedactionStatusKind.pdfPage => l10n.statusPdfPage(pageNumber, pageCount),
+    RedactionStatusKind.renderingPdfPage => l10n.statusRenderingPdfPage(
+      pageNumber,
+    ),
+    RedactionStatusKind.flatteningCleanPdf => l10n.statusFlatteningCleanPdf,
+    RedactionStatusKind.flatteningPdfPage => l10n.statusFlatteningPdfPage(
+      pageNumber,
+      pageCount,
+    ),
+    RedactionStatusKind.choosingPdf => l10n.statusChoosingPdf,
+    RedactionStatusKind.choosingFilesOrFolder =>
+      l10n.statusChoosingFilesOrFolder,
+    RedactionStatusKind.choosingImageFile => l10n.statusChoosingImageFile,
+    RedactionStatusKind.choosingImageFiles => l10n.statusChoosingImageFiles,
+    RedactionStatusKind.choosingPdfFile => l10n.statusChoosingPdfFile,
+    RedactionStatusKind.choosingPdfFiles => l10n.statusChoosingPdfFiles,
+    RedactionStatusKind.choosingFolder => l10n.statusChoosingFolder,
+    RedactionStatusKind.choosingImagesFromPhotos =>
+      l10n.statusChoosingImagesFromPhotos,
+    RedactionStatusKind.choosingOutputFolder => l10n.statusChoosingOutputFolder,
+    RedactionStatusKind.addingFiles => l10n.statusAddingFiles,
+    RedactionStatusKind.addingPhotos => l10n.statusAddingPhotos,
+    RedactionStatusKind.selectedMetadataInput =>
+      l10n.statusSelectedMetadataInput(
+        _localizedMetadataSummary(status.metadataInputSummary, label, l10n),
+      ),
+    RedactionStatusKind.removedMetadataInput => l10n.statusRemovedMetadataInput(
+      _localizedMetadataSummary(status.metadataInputSummary, label, l10n),
+    ),
+    RedactionStatusKind.noSupportedImagesOrPdfsSelected =>
+      l10n.statusNoSupportedImagesOrPdfsSelected,
+    RedactionStatusKind.noSupportedImagesOrPdfsFoundInFolder =>
+      l10n.statusNoSupportedImagesOrPdfsFoundInFolder,
+    RedactionStatusKind.noPhotosSelected => l10n.statusNoPhotosSelected,
+    RedactionStatusKind.removeFolderBeforeAddingPhotos =>
+      l10n.statusRemoveFolderBeforeAddingPhotos,
+    RedactionStatusKind.chooseMetadataInputFirst =>
+      l10n.statusChooseMetadataInputFirst,
+    RedactionStatusKind.metadataOutputFolderSet =>
+      l10n.statusMetadataOutputFolderSet,
+    RedactionStatusKind.startCleaningFirstToCreateOutputFolder =>
+      l10n.statusStartCleaningFirstToCreateOutputFolder,
+    RedactionStatusKind.openedOutputFolder => l10n.statusOpenedOutputFolder,
+    RedactionStatusKind.encodingCleanImage => l10n.statusEncodingCleanImage(
+      format,
+    ),
+    RedactionStatusKind.removingImageMetadata =>
+      l10n.statusRemovingImageMetadata(format),
+    RedactionStatusKind.preparingCleanImageToShare =>
+      l10n.statusPreparingCleanImageToShare(format),
+    RedactionStatusKind.savingCleanImageToPhotos =>
+      l10n.statusSavingCleanImageToPhotos(format),
+    RedactionStatusKind.exportedCleanImage =>
+      count == 0
+          ? l10n.statusExportedCleanImage(format)
+          : l10n.statusExportedCleanImageWithRedactions(format, count),
+    RedactionStatusKind.savedCleanImageToPhotos =>
+      l10n.statusSavedCleanImageToPhotos(format),
+    RedactionStatusKind.sharedCleanImage => l10n.statusSharedCleanImage(format),
+    RedactionStatusKind.savedMetadataCleanImage =>
+      l10n.statusSavedMetadataCleanImage(format),
+    RedactionStatusKind.cleaningPdfMetadata => l10n.statusCleaningPdfMetadata,
+    RedactionStatusKind.savedMetadataCleanPdf =>
+      l10n.statusSavedMetadataCleanPdf,
+    RedactionStatusKind.exportedCleanPdf =>
+      count == 0
+          ? l10n.statusExportedCleanPdf
+          : l10n.statusExportedCleanPdfWithRedactions(count),
+    RedactionStatusKind.exportCanceled => l10n.statusExportCanceled,
+    RedactionStatusKind.metadataRemovalCanceled =>
+      l10n.statusMetadataRemovalCanceled,
+    RedactionStatusKind.pdfExportCanceled => l10n.statusPdfExportCanceled,
+    RedactionStatusKind.pdfCleanCanceled => l10n.statusPdfCleanCanceled,
+    RedactionStatusKind.shareCanceled => l10n.statusShareCanceled,
+    RedactionStatusKind.saveCanceled => l10n.statusSaveCanceled,
+    RedactionStatusKind.startingMetadataClean =>
+      l10n.statusStartingMetadataClean,
+    RedactionStatusKind.preparingOutputFolder =>
+      l10n.statusPreparingOutputFolder,
+    RedactionStatusKind.startingMetadataCleanToPhotos =>
+      l10n.statusStartingMetadataCleanToPhotos,
+    RedactionStatusKind.photosOutputImagesOnly =>
+      l10n.statusPhotosOutputImagesOnly,
+    RedactionStatusKind.cleaningMetadataItem => l10n.statusCleaningMetadataItem(
+      label,
+      current,
+      total,
+    ),
+    RedactionStatusKind.cleaningMetadataPdfPage =>
+      l10n.statusCleaningMetadataPdfPage(
+        label,
+        pageNumber,
+        pageCount,
+        current,
+        total,
+      ),
+    RedactionStatusKind.savingMetadataItemToPhotos =>
+      l10n.statusSavingMetadataItemToPhotos(label, current, total),
+    RedactionStatusKind.metadataBatchResult => _localizedMetadataBatchResult(
+      l10n: l10n,
+      savedCount: savedCount,
+      failedCount: failedCount,
+      ignoredCount: ignoredCount,
+      destinationName: destination,
+      firstFailure: detail,
+    ),
+    RedactionStatusKind.redactionsCleared => l10n.statusRedactionsCleared,
+    RedactionStatusKind.pdfPageRedactionsCleared =>
+      l10n.statusPdfPageRedactionsCleared,
+    RedactionStatusKind.redactionCountReady => l10n.redactionCountReady(count),
+    RedactionStatusKind.pdfRedactionCountReady =>
+      l10n.statusPdfRedactionCountReady(pageNumber, count),
+    RedactionStatusKind.couldNotOpenPdf => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotOpenPdf,
+      detail,
+    ),
+    RedactionStatusKind.couldNotOpenImage => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotOpenImage,
+      detail,
+    ),
+    RedactionStatusKind.couldNotDecodeImage => l10n.statusCouldNotDecodeImage,
+    RedactionStatusKind.couldNotExportImage => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotExportImage,
+      detail,
+    ),
+    RedactionStatusKind.couldNotExportPdf => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotExportPdf,
+      detail,
+    ),
+    RedactionStatusKind.couldNotChooseMetadataInput => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotChooseMetadataInput,
+      detail,
+    ),
+    RedactionStatusKind.couldNotAddMetadataFiles => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotAddMetadataFiles,
+      detail,
+    ),
+    RedactionStatusKind.couldNotAddPhotos => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotAddPhotos,
+      detail,
+    ),
+    RedactionStatusKind.couldNotChooseOutputFolder => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotChooseOutputFolder,
+      detail,
+    ),
+    RedactionStatusKind.couldNotOpenOutputFolder => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotOpenOutputFolder,
+      detail,
+    ),
+    RedactionStatusKind.couldNotCleanMetadata => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotCleanMetadata,
+      detail,
+    ),
+    RedactionStatusKind.couldNotCreateOutputFolder =>
+      status.automaticOutputFailure
+          ? l10n.statusCouldNotCreateOutputFolderAutomatic(status.path ?? '')
+          : status.path == null
+          ? l10n.statusCouldNotCreateOutputFolder
+          : l10n.statusCouldNotCreateOutputFolderPath(status.path!),
+    RedactionStatusKind.couldNotRenderPdfPage => _localizedFailure(
+      l10n,
+      l10n.statusCouldNotRenderPdfPage,
+      detail,
+    ),
+    RedactionStatusKind.externalMessage => status.fallbackMessage,
+  };
+}
+
+String _localizedFailure(AppLocalizations l10n, String title, String? detail) {
+  if (detail == null || detail.trim().isEmpty) return title;
+  return l10n.statusFailureWithDetail(title, detail.trim());
+}
+
+String _localizedMetadataBatchResult({
+  required AppLocalizations l10n,
+  required int savedCount,
+  required int failedCount,
+  required int ignoredCount,
+  required String destinationName,
+  required String? firstFailure,
+}) {
+  final details = <String>[
+    if (ignoredCount > 0) l10n.statusMetadataBatchIgnoredDetail(ignoredCount),
+    if (failedCount > 0 && firstFailure == null)
+      l10n.statusMetadataBatchFailedDetail(failedCount),
+    if (failedCount > 0 && firstFailure != null)
+      l10n.statusMetadataBatchFailedWithReasonDetail(failedCount, firstFailure),
+  ];
+  final detailText = details.isEmpty
+      ? ''
+      : l10n.statusMetadataBatchDetailsWrapper(
+          details.join(l10n.statusMetadataBatchDetailSeparator),
+        );
+  if (savedCount == 0) return l10n.statusMetadataBatchNoSaved(detailText);
+  return l10n.statusMetadataBatchCompleted(
+    savedCount,
+    destinationName,
+    detailText,
+  );
+}
+
+String _localizedMetadataSummary(
+  MetadataInputSummary? summary,
+  String fallback,
+  AppLocalizations l10n,
+) {
+  if (summary == null) return fallback;
+  return switch (summary.kind) {
+    MetadataInputSummaryKind.folder => l10n.metadataSummaryFolder(
+      summary.name ?? '',
+    ),
+    MetadataInputSummaryKind.images => l10n.metadataSummaryImages(
+      summary.count ?? 0,
+    ),
+    MetadataInputSummaryKind.photos => l10n.metadataSummaryPhotos(
+      summary.count ?? 0,
+    ),
+    MetadataInputSummaryKind.pdfs => l10n.metadataSummaryPdfs(
+      summary.count ?? 0,
+    ),
+    MetadataInputSummaryKind.files => l10n.metadataSummaryFiles(
+      summary.count ?? 0,
+    ),
+  };
+}
+
+_CompletionNotice? _completionNoticeForStatus(
+  RedactionStatus status,
+  AppLocalizations l10n,
+) {
+  if (status.kind == RedactionStatusKind.exportedCleanImage) {
+    return _CompletionNotice(
+      title: l10n.cleanImageExported,
+      message: l10n.redactionsBurnedMetadataRemoved,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Saved clean ')) {
-    return const _CompletionNotice(
-      title: 'Saved to Photos',
-      message: 'The clean image is ready in your photo library.',
+  if (status.kind == RedactionStatusKind.savedCleanImageToPhotos) {
+    return _CompletionNotice(
+      title: l10n.savedToPhotos,
+      message: l10n.cleanImageReadyInPhotos,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Shared clean ')) {
-    return const _CompletionNotice(
-      title: 'Ready to share',
-      message: 'A clean copy was prepared for sharing.',
+  if (status.kind == RedactionStatusKind.sharedCleanImage) {
+    return _CompletionNotice(
+      title: l10n.readyToShare,
+      message: l10n.cleanCopyPreparedForSharing,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Saved metadata-clean ')) {
-    if (status == 'Saved metadata-clean PDF') {
-      return const _CompletionNotice(
-        title: 'PDF cleaned',
-        message: 'A flattened PDF was saved without original metadata.',
-        tone: _NoticeTone.success,
-      );
-    }
-
-    return const _CompletionNotice(
-      title: 'Metadata removed',
-      message: 'A clean image copy was saved without private metadata.',
+  if (status.kind == RedactionStatusKind.savedMetadataCleanImage) {
+    return _CompletionNotice(
+      title: l10n.metadataRemoved,
+      message: l10n.cleanImageSavedWithoutMetadata,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Exported clean PDF')) {
-    return const _CompletionNotice(
-      title: 'Clean PDF exported',
-      message: 'Pages were flattened and PDF metadata was removed.',
+  if (status.kind == RedactionStatusKind.savedMetadataCleanPdf) {
+    return _CompletionNotice(
+      title: l10n.pdfCleaned,
+      message: l10n.flattenedPdfSavedWithoutOriginalMetadata,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Success: cleaned metadata for ')) {
-    return const _CompletionNotice(
-      title: 'Metadata cleaned',
-      message: 'Clean copies were saved to the output folder.',
+  if (status.kind == RedactionStatusKind.exportedCleanPdf) {
+    return _CompletionNotice(
+      title: l10n.cleanPdfExported,
+      message: l10n.pagesFlattenedPdfMetadataRemoved,
       tone: _NoticeTone.success,
     );
   }
 
-  if (status.startsWith('Cleaned metadata for ')) {
-    return const _CompletionNotice(
-      title: 'Metadata cleaned with notes',
-      message: 'Some files need attention. Check the status text for details.',
+  if (status.kind == RedactionStatusKind.metadataBatchResult &&
+      (status.failedCount ?? 0) == 0) {
+    return _CompletionNotice(
+      title: l10n.metadataCleaned,
+      message: l10n.cleanCopiesSavedToOutputFolder,
+      tone: _NoticeTone.success,
+    );
+  }
+
+  if (status.kind == RedactionStatusKind.metadataBatchResult &&
+      (status.failedCount ?? 0) > 0) {
+    return _CompletionNotice(
+      title: l10n.metadataCleanedWithNotes,
+      message: l10n.someFilesNeedAttention,
       tone: _NoticeTone.warning,
     );
   }
 
-  if (status.startsWith('Could not export image') ||
-      status.startsWith('Could not clean metadata') ||
-      status.startsWith('Could not create output folder')) {
+  if (status.kind == RedactionStatusKind.couldNotExportImage ||
+      status.kind == RedactionStatusKind.couldNotCleanMetadata ||
+      status.kind == RedactionStatusKind.couldNotCreateOutputFolder) {
     return _CompletionNotice(
-      title: 'Could not finish',
-      message: status,
+      title: l10n.couldNotFinish,
+      message: _localizedStatus(status, l10n),
       tone: _NoticeTone.error,
     );
   }
@@ -368,6 +646,7 @@ class _DesktopLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -376,16 +655,18 @@ class _DesktopLayout extends ConsumerWidget {
           _TopBar(
             mode: mode,
             onModeChanged: onModeChanged,
-            status: state.status,
+            status: state.statusMessage,
             canUndo: mode == _WorkspaceMode.pdf
                 ? state.currentPdfRedactions.isNotEmpty
-                : state.hasRedactions,
+                : state.hasRedactions && !isImageCropping,
             canClear: mode == _WorkspaceMode.pdf
                 ? state.currentPdfRedactions.isNotEmpty
-                : state.hasRedactions,
+                : state.hasRedactions && !isImageCropping,
             canExport: mode == _WorkspaceMode.pdf
                 ? state.hasPdf && !state.isExporting
-                : state.hasImage && !state.isExporting,
+                : state.hasImage && !state.isExporting && !isImageCropping,
+            canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+            isCropping: isImageCropping,
             isOpening: state.isOpening,
             isExporting: state.isExporting,
             onOpen: mode == _WorkspaceMode.pdf
@@ -398,6 +679,8 @@ class _DesktopLayout extends ConsumerWidget {
             onClear: mode == _WorkspaceMode.pdf
                 ? controller.clearPdfPageRedactions
                 : controller.clear,
+            onStartCrop: controller.startCrop,
+            onCancelCrop: controller.cancelCrop,
             onExport: mode == _WorkspaceMode.pdf
                 ? controller.exportPdf
                 : controller.exportImage,
@@ -421,10 +704,14 @@ class _DesktopLayout extends ConsumerWidget {
                       onBeginRedaction: controller.beginRedaction,
                       onUpdateRedaction: controller.updateRedaction,
                       onFinishRedaction: controller.finishRedaction,
+                      cropRect: state.cropRect,
+                      onCropChanged: controller.updateCrop,
+                      onCancelCrop: controller.cancelCrop,
+                      onApplyCrop: controller.applyCrop,
                       onOpen: controller.openImage,
                       onOpenPhotos: controller.openPhotoLibrary,
-                      emptyTitle: 'Choose an image',
-                      openLabel: 'Files',
+                      emptyTitle: context.l10n.chooseImage,
+                      openLabel: context.l10n.files,
                       fitPadding: 28,
                       showPhotoButton: true,
                       enablePanZoom: true,
@@ -458,8 +745,8 @@ class _DesktopLayout extends ConsumerWidget {
                       onUpdateRedaction: controller.updatePdfRedaction,
                       onFinishRedaction: controller.finishPdfRedaction,
                       onOpen: controller.openPdf,
-                      emptyTitle: 'Choose a PDF',
-                      openLabel: 'Files',
+                      emptyTitle: context.l10n.choosePdf,
+                      openLabel: context.l10n.files,
                       fitPadding: 28,
                       enablePanZoom: true,
                       compactEmptyState: true,
@@ -505,9 +792,10 @@ class _MobileLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
     final canExport = mode == _WorkspaceMode.pdf
         ? state.hasPdf && !state.isExporting
-        : state.hasImage && !state.isExporting;
+        : state.hasImage && !state.isExporting && !isImageCropping;
     final hasDocument = mode == _WorkspaceMode.pdf
         ? state.hasPdf
         : state.hasImage;
@@ -518,7 +806,7 @@ class _MobileLayout extends ConsumerWidget {
         children: <Widget>[
           _MobileTopBar(
             mode: mode,
-            status: state.status,
+            status: state.statusMessage,
             redactionCount: mode == _WorkspaceMode.pdf
                 ? state.currentPdfRedactions.length
                 : state.redactions.length,
@@ -554,10 +842,14 @@ class _MobileLayout extends ConsumerWidget {
                 onBeginRedaction: controller.beginRedaction,
                 onUpdateRedaction: controller.updateRedaction,
                 onFinishRedaction: controller.finishRedaction,
+                cropRect: state.cropRect,
+                onCropChanged: controller.updateCrop,
+                onCancelCrop: controller.cancelCrop,
+                onApplyCrop: controller.applyCrop,
                 onOpen: controller.openImage,
                 onOpenPhotos: controller.openPhotoLibrary,
-                emptyTitle: 'Choose an image',
-                openLabel: 'Files',
+                emptyTitle: context.l10n.chooseImage,
+                openLabel: context.l10n.files,
                 margin: EdgeInsets.zero,
                 showBorder: false,
                 fitPadding: 14,
@@ -573,8 +865,8 @@ class _MobileLayout extends ConsumerWidget {
                 onUpdateRedaction: controller.updatePdfRedaction,
                 onFinishRedaction: controller.finishPdfRedaction,
                 onOpen: controller.openPdf,
-                emptyTitle: 'Choose a PDF',
-                openLabel: 'Files',
+                emptyTitle: context.l10n.choosePdf,
+                openLabel: context.l10n.files,
                 margin: EdgeInsets.zero,
                 showBorder: false,
                 fitPadding: 14,
@@ -592,12 +884,14 @@ class _MobileLayout extends ConsumerWidget {
             _MobileBottomBar(
               canUndo: mode == _WorkspaceMode.pdf
                   ? state.currentPdfRedactions.isNotEmpty
-                  : state.hasRedactions,
+                  : state.hasRedactions && !isImageCropping,
               canClear: mode == _WorkspaceMode.pdf
                   ? state.currentPdfRedactions.isNotEmpty
-                  : state.hasRedactions,
+                  : state.hasRedactions && !isImageCropping,
               isOpening: state.isOpening,
               canExport: canExport,
+              canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+              isCropping: isImageCropping,
               onOpen: mode == _WorkspaceMode.pdf
                   ? controller.openPdf
                   : controller.openImage,
@@ -608,6 +902,8 @@ class _MobileLayout extends ConsumerWidget {
               onClear: mode == _WorkspaceMode.pdf
                   ? controller.clearPdfPageRedactions
                   : controller.clear,
+              onStartCrop: controller.startCrop,
+              onCancelCrop: controller.cancelCrop,
               onExportOptions: mode == _WorkspaceMode.pdf
                   ? () => _showPdfExportSheet(context)
                   : () => _showExportSheet(context),
@@ -633,23 +929,26 @@ class _TabletLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
     final canExport = mode == _WorkspaceMode.pdf
         ? state.hasPdf && !state.isExporting
-        : state.hasImage && !state.isExporting;
+        : state.hasImage && !state.isExporting && !isImageCropping;
 
     return Column(
       children: <Widget>[
         _TabletTopBar(
           mode: mode,
           onModeChanged: onModeChanged,
-          status: state.status,
+          status: state.statusMessage,
           canUndo: mode == _WorkspaceMode.pdf
               ? state.currentPdfRedactions.isNotEmpty
-              : state.hasRedactions,
+              : state.hasRedactions && !isImageCropping,
           canClear: mode == _WorkspaceMode.pdf
               ? state.currentPdfRedactions.isNotEmpty
-              : state.hasRedactions,
+              : state.hasRedactions && !isImageCropping,
           canExport: canExport,
+          canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+          isCropping: isImageCropping,
           isExporting: state.isExporting,
           onUndo: mode == _WorkspaceMode.pdf
               ? controller.undoPdfRedaction
@@ -657,6 +956,8 @@ class _TabletLayout extends ConsumerWidget {
           onClear: mode == _WorkspaceMode.pdf
               ? controller.clearPdfPageRedactions
               : controller.clear,
+          onStartCrop: controller.startCrop,
+          onCancelCrop: controller.cancelCrop,
           onExport: mode == _WorkspaceMode.pdf
               ? controller.exportPdf
               : controller.exportImage,
@@ -702,10 +1003,14 @@ class _TabletLayout extends ConsumerWidget {
               onBeginRedaction: controller.beginRedaction,
               onUpdateRedaction: controller.updateRedaction,
               onFinishRedaction: controller.finishRedaction,
+              cropRect: state.cropRect,
+              onCropChanged: controller.updateCrop,
+              onCancelCrop: controller.cancelCrop,
+              onApplyCrop: controller.applyCrop,
               onOpen: controller.openImage,
               onOpenPhotos: controller.openPhotoLibrary,
-              emptyTitle: 'Choose an image',
-              openLabel: 'Files',
+              emptyTitle: context.l10n.chooseImage,
+              openLabel: context.l10n.files,
               margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               fitPadding: 16,
               showPhotoButton: true,
@@ -719,8 +1024,8 @@ class _TabletLayout extends ConsumerWidget {
               onUpdateRedaction: controller.updatePdfRedaction,
               onFinishRedaction: controller.finishPdfRedaction,
               onOpen: controller.openPdf,
-              emptyTitle: 'Choose a PDF',
-              openLabel: 'Files',
+              emptyTitle: context.l10n.choosePdf,
+              openLabel: context.l10n.files,
               margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               fitPadding: 16,
               enablePanZoom: true,
@@ -744,9 +1049,13 @@ class _TabletTopBar extends StatelessWidget {
     required this.canUndo,
     required this.canClear,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.isExporting,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExport,
     required this.onSaveToPhotos,
     required this.onShare,
@@ -756,13 +1065,17 @@ class _TabletTopBar extends StatelessWidget {
 
   final _WorkspaceMode mode;
   final ValueChanged<_WorkspaceMode> onModeChanged;
-  final String status;
+  final RedactionStatus status;
   final bool canUndo;
   final bool canClear;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final bool isExporting;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExport;
   final VoidCallback onSaveToPhotos;
   final VoidCallback onShare;
@@ -785,14 +1098,17 @@ class _TabletTopBar extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Redact Kit',
+                Text(
+                  context.l10n.appTitle,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  status,
+                  _localizedStatus(status, context.l10n),
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: redactKitMutedTextColor,
@@ -808,17 +1124,30 @@ class _TabletTopBar extends StatelessWidget {
           ),
           if (mode != _WorkspaceMode.metadata) ...<Widget>[
             _TopBarIconButton(
-              tooltip: 'Undo',
+              tooltip: context.l10n.undo,
               onPressed: canUndo ? onUndo : null,
               icon: const Icon(Icons.undo),
             ),
             _TopBarIconButton(
-              tooltip: 'Clear',
+              tooltip: context.l10n.clear,
               onPressed: canClear ? onClear : null,
               icon: const Icon(Icons.delete_outline),
             ),
+            if (mode == _WorkspaceMode.redact)
+              _TopBarIconButton(
+                tooltip: isCropping
+                    ? context.l10n.cancelCrop
+                    : context.l10n.crop,
+                onPressed: canCrop
+                    ? isCropping
+                          ? onCancelCrop
+                          : onStartCrop
+                    : null,
+                icon: const Icon(Icons.crop),
+                tonal: isCropping,
+              ),
             _TopBarIconButton(
-              tooltip: 'Save to Files',
+              tooltip: context.l10n.saveToFiles,
               onPressed: canExport ? onExport : null,
               icon: isExporting
                   ? const SizedBox.square(
@@ -830,13 +1159,13 @@ class _TabletTopBar extends StatelessWidget {
             ),
             if (mode == _WorkspaceMode.redact) ...<Widget>[
               _TopBarIconButton(
-                tooltip: 'Save to Photos',
+                tooltip: context.l10n.saveToPhotos,
                 onPressed: canExport ? onSaveToPhotos : null,
                 icon: const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
                 tonal: true,
               ),
               _TopBarIconButton(
-                tooltip: 'Share',
+                tooltip: context.l10n.share,
                 onPressed: canExport ? onShare : null,
                 icon: const Icon(Icons.ios_share),
                 tonal: true,
@@ -845,16 +1174,16 @@ class _TabletTopBar extends StatelessWidget {
           ],
           _TopBarIconButton(
             tooltip: switch (mode) {
-              _WorkspaceMode.redact => 'Image details',
-              _WorkspaceMode.pdf => 'PDF details',
-              _WorkspaceMode.metadata => 'Metadata details',
+              _WorkspaceMode.redact => context.l10n.imageDetails,
+              _WorkspaceMode.pdf => context.l10n.pdfDetails,
+              _WorkspaceMode.metadata => context.l10n.metadataDetails,
             },
             onPressed: onHelp,
             icon: const Icon(CupertinoIcons.info),
           ),
           if (onSettings != null)
             _TopBarIconButton(
-              tooltip: 'Settings',
+              tooltip: context.l10n.settings,
               onPressed: onSettings,
               icon: const Icon(CupertinoIcons.slider_horizontal_3),
             ),
@@ -893,7 +1222,7 @@ class _TabletSourceStrip extends StatelessWidget {
             child: _SourceActionButton(
               onPressed: isOpening ? null : onFiles,
               icon: pdfMode ? CupertinoIcons.doc_text : CupertinoIcons.folder,
-              label: 'Files',
+              label: context.l10n.files,
             ),
           ),
           if (!pdfMode && onPhotos != null) ...<Widget>[
@@ -903,7 +1232,7 @@ class _TabletSourceStrip extends StatelessWidget {
               child: _SourceActionButton(
                 onPressed: isOpening ? null : onPhotos,
                 icon: CupertinoIcons.photo_on_rectangle,
-                label: 'Photos',
+                label: context.l10n.photos,
               ),
             ),
           ],
@@ -980,9 +1309,9 @@ class _ModeSwitcher extends StatelessWidget {
       selected: mode,
       values: _WorkspaceMode.values,
       labelFor: (mode) => switch (mode) {
-        _WorkspaceMode.redact => 'Image',
-        _WorkspaceMode.pdf => 'PDF',
-        _WorkspaceMode.metadata => 'Metadata',
+        _WorkspaceMode.redact => context.l10n.image,
+        _WorkspaceMode.pdf => context.l10n.pdf,
+        _WorkspaceMode.metadata => context.l10n.metadata,
       },
       cupertinoIconFor: (mode) => switch (mode) {
         _WorkspaceMode.redact => CupertinoIcons.photo,
@@ -1260,7 +1589,7 @@ class _PdfPageNavigationStrip extends StatelessWidget {
                 child: _CupertinoActionButton(
                   onPressed: !isBusy && currentPage > 1 ? onPrevious : null,
                   icon: const Icon(Icons.chevron_left),
-                  label: 'Prev',
+                  label: context.l10n.prev,
                   emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
@@ -1279,7 +1608,7 @@ class _PdfPageNavigationStrip extends StatelessWidget {
                 child: _CupertinoActionButton(
                   onPressed: !isBusy && currentPage < pageCount ? onNext : null,
                   icon: const Icon(Icons.chevron_right),
-                  label: 'Next',
+                  label: context.l10n.next,
                   emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
@@ -1352,7 +1681,7 @@ class _PdfPageNumberFieldState extends State<_PdfPageNumberField> {
       inputFormatters: <TextInputFormatter>[
         FilteringTextInputFormatter.digitsOnly,
       ],
-      placeholder: 'Page',
+      placeholder: context.l10n.pagePlaceholder,
       suffix: Padding(
         padding: const EdgeInsets.only(right: 9),
         child: Text(
@@ -1459,7 +1788,7 @@ class _MobileTopBar extends StatelessWidget {
   });
 
   final _WorkspaceMode mode;
-  final String status;
+  final RedactionStatus status;
   final int redactionCount;
   final bool hasMetadataInput;
   final bool hasPdf;
@@ -1471,10 +1800,12 @@ class _MobileTopBar extends StatelessWidget {
     final summary = switch (mode) {
       _WorkspaceMode.redact =>
         redactionCount > 0
-            ? '$redactionCount redaction${redactionCount == 1 ? '' : 's'}'
+            ? context.l10n.redactionCountShort(redactionCount)
             : null,
-      _WorkspaceMode.pdf => hasPdf ? '$redactionCount on page' : null,
-      _WorkspaceMode.metadata => hasMetadataInput ? 'Input selected' : null,
+      _WorkspaceMode.pdf =>
+        hasPdf ? context.l10n.onPageCount(redactionCount) : null,
+      _WorkspaceMode.metadata =>
+        hasMetadataInput ? context.l10n.inputSelected : null,
     };
 
     return Container(
@@ -1491,17 +1822,20 @@ class _MobileTopBar extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Redact Kit',
+                Text(
+                  context.l10n.appTitle,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: <Widget>[
                     Flexible(
                       child: Text(
-                        status,
+                        _localizedStatus(status, context.l10n),
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: redactKitMutedTextColor,
@@ -1520,7 +1854,7 @@ class _MobileTopBar extends StatelessWidget {
             ),
           ),
           _CupertinoTooltip(
-            message: 'Details',
+            message: context.l10n.details,
             child: _CupertinoIconControl(
               onPressed: onHelp,
               icon: const Icon(CupertinoIcons.info),
@@ -1529,7 +1863,7 @@ class _MobileTopBar extends StatelessWidget {
           ),
           if (onSettings != null)
             _CupertinoTooltip(
-              message: 'Settings',
+              message: context.l10n.settings,
               child: _CupertinoIconControl(
                 onPressed: onSettings,
                 icon: const Icon(CupertinoIcons.slider_horizontal_3),
@@ -1577,10 +1911,14 @@ class _MobileBottomBar extends StatelessWidget {
     required this.canClear,
     required this.isOpening,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.onOpen,
     required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExportOptions,
     this.pdfMode = false,
   });
@@ -1589,10 +1927,14 @@ class _MobileBottomBar extends StatelessWidget {
   final bool canClear;
   final bool isOpening;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final VoidCallback onOpen;
   final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExportOptions;
   final bool pdfMode;
 
@@ -1609,30 +1951,40 @@ class _MobileBottomBar extends StatelessWidget {
         children: <Widget>[
           _MobileToolbarItem(
             icon: pdfMode ? Icons.picture_as_pdf_outlined : Icons.folder_open,
-            label: pdfMode ? 'PDF' : 'Files',
+            label: pdfMode ? context.l10n.pdf : context.l10n.files,
             onPressed: isOpening ? null : onOpen,
           ),
           if (!pdfMode)
             _MobileToolbarItem(
               icon: Icons.photo_library_outlined,
-              label: 'Photos',
+              label: context.l10n.photos,
               onPressed: isOpening ? null : onOpenPhotos,
+            ),
+          if (!pdfMode)
+            _MobileToolbarItem(
+              icon: Icons.crop,
+              label: isCropping ? context.l10n.cancelCrop : context.l10n.crop,
+              onPressed: canCrop
+                  ? isCropping
+                        ? onCancelCrop
+                        : onStartCrop
+                  : null,
             ),
           _MobileToolbarItem(
             icon: Icons.undo,
-            label: 'Undo',
+            label: context.l10n.undo,
             onPressed: canUndo ? onUndo : null,
           ),
           _MobileToolbarItem(
             icon: Icons.delete_outline,
-            label: 'Clear',
+            label: context.l10n.clear,
             onPressed: canClear ? onClear : null,
           ),
           _MobileToolbarItem(
             icon: canExport
                 ? Icons.save_alt
                 : CupertinoIcons.slider_horizontal_3,
-            label: pdfMode ? 'Save' : 'Export',
+            label: pdfMode ? context.l10n.save : context.l10n.export,
             onPressed: onExportOptions,
             primary: canExport,
           ),
@@ -1722,7 +2074,8 @@ void _showExportSheet(BuildContext context) {
             final state = ref.watch(redactionControllerProvider);
             final controller = ref.read(redactionControllerProvider.notifier);
             final image = state.image;
-            final canExport = state.hasImage && !state.isExporting;
+            final canExport =
+                state.hasImage && !state.isExporting && !state.isCropping;
 
             return ConstrainedBox(
               constraints: BoxConstraints(
@@ -1736,17 +2089,17 @@ void _showExportSheet(BuildContext context) {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Export',
-                            style: TextStyle(
+                            context.l10n.export,
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
                         _CupertinoTooltip(
-                          message: 'Close',
+                          message: context.l10n.close,
                           child: _CupertinoIconControl(
                             onPressed: () => Navigator.of(context).pop(),
                             icon: const Icon(CupertinoIcons.xmark),
@@ -1756,14 +2109,14 @@ void _showExportSheet(BuildContext context) {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const _PanelHeading('Tool'),
+                    _PanelHeading(context.l10n.tool),
                     Row(
                       children: <Widget>[
                         _ColorSwatchButton(
                           color: const Color(0xFF050505),
                           selected:
                               state.redactionColor == const Color(0xFF050505),
-                          label: 'Black',
+                          label: context.l10n.black,
                           onTap: () =>
                               controller.selectColor(const Color(0xFF050505)),
                         ),
@@ -1771,28 +2124,31 @@ void _showExportSheet(BuildContext context) {
                         _ColorSwatchButton(
                           color: Colors.white,
                           selected: state.redactionColor == Colors.white,
-                          label: 'White',
+                          label: context.l10n.white,
                           onTap: () => controller.selectColor(Colors.white),
                         ),
                       ],
                     ),
                     const SizedBox(height: 22),
-                    const _PanelHeading('Image'),
+                    _PanelHeading(context.l10n.image),
                     _MetricRow(
-                      label: 'Pixels',
+                      label: context.l10n.pixels,
                       value: image == null
-                          ? 'None'
+                          ? context.l10n.none
                           : '${image.width} x ${image.height}',
                     ),
                     _MetricRow(
-                      label: 'Redactions',
+                      label: context.l10n.redactions,
                       value: '${state.redactions.length}',
                     ),
-                    const _MetricRow(label: 'Cover', value: '100% opaque'),
+                    _MetricRow(
+                      label: context.l10n.cover,
+                      value: context.l10n.coverOpaque,
+                    ),
                     const SizedBox(height: 22),
                     const _DividerLine(),
                     const SizedBox(height: 22),
-                    const _PanelHeading('Format'),
+                    _PanelHeading(context.l10n.format),
                     _ExportFormatPicker(
                       selected: state.exportFormat,
                       onChanged: controller.setExportFormat,
@@ -1805,7 +2161,7 @@ void _showExportSheet(BuildContext context) {
                     ),
                     const SizedBox(height: 18),
                     _KeepFilenamesToggle(
-                      label: 'Keep filename',
+                      label: context.l10n.keepFilename,
                       value: state.preserveRedactionExportFileName,
                       onChanged: controller.setPreserveRedactionExportFileName,
                     ),
@@ -1828,7 +2184,7 @@ void _showExportSheet(BuildContext context) {
                                     ),
                                   )
                                 : const Icon(Icons.save_alt),
-                            label: 'Save to Files',
+                            label: context.l10n.saveToFiles,
                             emphasis: _CupertinoControlEmphasis.filled,
                           ),
                         ),
@@ -1844,7 +2200,7 @@ void _showExportSheet(BuildContext context) {
                             icon: const Icon(
                               CupertinoIcons.photo_fill_on_rectangle_fill,
                             ),
-                            label: 'Save to Photos',
+                            label: context.l10n.saveToPhotos,
                             emphasis: _CupertinoControlEmphasis.filled,
                           ),
                         ),
@@ -1861,7 +2217,7 @@ void _showExportSheet(BuildContext context) {
                               }
                             : null,
                         icon: const Icon(Icons.ios_share),
-                        label: 'Share',
+                        label: context.l10n.share,
                         emphasis: _CupertinoControlEmphasis.tonal,
                       ),
                     ),
@@ -1895,17 +2251,17 @@ void _showPdfExportSheet(BuildContext context) {
                 children: <Widget>[
                   Row(
                     children: <Widget>[
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'PDF Export',
-                          style: TextStyle(
+                          context.l10n.pdfExport,
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
                       _CupertinoTooltip(
-                        message: 'Close',
+                        message: context.l10n.close,
                         child: _CupertinoIconControl(
                           onPressed: () => Navigator.of(context).pop(),
                           icon: const Icon(CupertinoIcons.xmark),
@@ -1915,14 +2271,14 @@ void _showPdfExportSheet(BuildContext context) {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const _PanelHeading('Tool'),
+                  _PanelHeading(context.l10n.tool),
                   Row(
                     children: <Widget>[
                       _ColorSwatchButton(
                         color: const Color(0xFF050505),
                         selected:
                             state.redactionColor == const Color(0xFF050505),
-                        label: 'Black',
+                        label: context.l10n.black,
                         onTap: () =>
                             controller.selectColor(const Color(0xFF050505)),
                       ),
@@ -1930,23 +2286,27 @@ void _showPdfExportSheet(BuildContext context) {
                       _ColorSwatchButton(
                         color: Colors.white,
                         selected: state.redactionColor == Colors.white,
-                        label: 'White',
+                        label: context.l10n.white,
                         onTap: () => controller.selectColor(Colors.white),
                       ),
                     ],
                   ),
                   const SizedBox(height: 22),
-                  const _PanelHeading('PDF'),
+                  _PanelHeading(context.l10n.pdf),
                   _MetricRow(
-                    label: 'Pages',
-                    value: state.hasPdf ? '${state.pdfPageCount}' : 'None',
+                    label: context.l10n.pages,
+                    value: state.hasPdf
+                        ? '${state.pdfPageCount}'
+                        : context.l10n.none,
                   ),
                   _MetricRow(
-                    label: 'Current page',
-                    value: state.hasPdf ? '${state.pdfCurrentPage}' : 'None',
+                    label: context.l10n.currentPage,
+                    value: state.hasPdf
+                        ? '${state.pdfCurrentPage}'
+                        : context.l10n.none,
                   ),
                   _MetricRow(
-                    label: 'Redactions',
+                    label: context.l10n.redactions,
                     value: '${state.pdfRedactionCount}',
                   ),
                   const SizedBox(height: 18),
@@ -1956,7 +2316,7 @@ void _showPdfExportSheet(BuildContext context) {
                   ),
                   const SizedBox(height: 18),
                   _KeepFilenamesToggle(
-                    label: 'Keep filename',
+                    label: context.l10n.keepFilename,
                     value: state.preservePdfExportFileName,
                     onChanged: controller.setPreservePdfExportFileName,
                   ),
@@ -1979,7 +2339,7 @@ void _showPdfExportSheet(BuildContext context) {
                                   ),
                                 )
                               : const Icon(Icons.save_alt),
-                          label: 'Save Redacted PDF',
+                          label: context.l10n.saveRedactedPdf,
                           emphasis: _CupertinoControlEmphasis.filled,
                         ),
                       ),
@@ -1996,99 +2356,91 @@ void _showPdfExportSheet(BuildContext context) {
 }
 
 void _showRedactDetails(BuildContext context) {
+  final l10n = context.l10n;
   _showDetails(
     context,
-    title: 'Image Privacy',
-    children: const <Widget>[
-      _pixelLevelRedactionPoint,
+    title: l10n.imagePrivacy,
+    children: <Widget>[
+      _pixelLevelRedactionPoint(l10n),
       _PrivacyPoint(
         icon: _metadataRemovedIcon,
-        title: 'Metadata removed',
-        body:
-            'Exports remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, comments, and other hidden image metadata.',
+        title: l10n.metadataRemoved,
+        body: l10n.imageMetadataRemovedBody,
       ),
       _PrivacyPoint(
         icon: _outputFormatIcon,
-        title: 'Output format',
-        body:
-            'PNG is lossless. JPEG is smaller and may soften edges. Both are written as fresh files without original metadata.',
+        title: l10n.outputFormatPoint,
+        body: l10n.imageOutputFormatBody,
       ),
     ],
   );
 }
 
 void _showPdfDetails(BuildContext context) {
+  final l10n = context.l10n;
   _showDetails(
     context,
-    title: 'PDF Privacy',
-    children: const <Widget>[
-      _pixelLevelRedactionPoint,
+    title: l10n.pdfPrivacy,
+    children: <Widget>[
+      _pixelLevelRedactionPoint(l10n),
       _PrivacyPoint(
         icon: Icons.layers_clear_outlined,
-        title: 'Hidden PDF data is removed',
-        body:
-            'The export drops original text layers, annotations, forms, links, attachments, OCR text, and document metadata.',
+        title: l10n.hiddenPdfDataRemoved,
+        body: l10n.hiddenPdfDataRemovedBody,
       ),
       _PrivacyPoint(
         icon: _metadataRemovedIcon,
-        title: 'Metadata removed',
-        body:
-            'The clean PDF is written without the original title, author, creator, producer, dates, keywords, trailer ID, or XMP metadata.',
+        title: l10n.metadataRemoved,
+        body: l10n.pdfMetadataRemovedBody,
       ),
       _PrivacyPoint(
         icon: Icons.picture_as_pdf_outlined,
-        title: 'Flatten redacted pages',
-        body:
-            'Each page is rendered as an image. Redaction boxes are burned in, then a new PDF is built at the original page size.',
+        title: l10n.flattenRedactedPages,
+        body: l10n.flattenRedactedPagesBody,
       ),
       _PrivacyPoint(
         icon: _outputFormatIcon,
-        title: 'Output',
-        body:
-            'The exported PDF keeps the original page size and uses the selected PDF quality setting.',
+        title: l10n.output,
+        body: l10n.pdfOutputBody,
       ),
       _PrivacyPoint(
         icon: _noteIcon,
         iconBackgroundColor: _noteBackgroundColor,
         iconColor: _noteIconColor,
-        title: 'Tradeoff',
-        body:
-            'Flattened PDFs are safer to verify, but text is no longer selectable or searchable.',
+        title: l10n.tradeoff,
+        body: l10n.pdfTradeoffBody,
       ),
     ],
   );
 }
 
 void _showMetadataDetails(BuildContext context) {
+  final l10n = context.l10n;
   _showDetails(
     context,
-    title: 'Metadata Only',
-    children: const <Widget>[
+    title: l10n.metadataOnlyInfo,
+    children: <Widget>[
       _PrivacyPoint(
         icon: Icons.photo_library_outlined,
-        title: 'Clean without redaction',
-        body:
-            'Pick images, PDFs, Photos, or one folder. This mode removes hidden metadata without drawing boxes.',
+        title: l10n.cleanWithoutRedaction,
+        body: l10n.cleanWithoutRedactionBody,
       ),
       _PrivacyPoint(
         icon: _metadataRemovedIcon,
-        title: 'Metadata removed',
-        body:
-            'Images remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, and comments. PDFs are rebuilt without original document metadata or hidden structure.',
+        title: l10n.metadataRemoved,
+        body: l10n.metadataOnlyRemovedBody,
       ),
       _PrivacyPoint(
         icon: _outputFormatIcon,
-        title: 'Output',
-        body:
-            'Save to the app Cleaned folder, choose another folder, or save image-only results to Photos.',
+        title: l10n.output,
+        body: l10n.metadataOnlyOutputBody,
       ),
       _PrivacyPoint(
         icon: _noteIcon,
         iconBackgroundColor: _noteBackgroundColor,
         iconColor: _noteIconColor,
-        title: 'Note',
-        body:
-            'Metadata-only does not hide visible text or pixels. Use Image or PDF mode when private content is visible on the page.',
+        title: l10n.note,
+        body: l10n.metadataOnlyNoteBody,
       ),
     ],
   );
@@ -2100,12 +2452,13 @@ const IconData _noteIcon = CupertinoIcons.exclamationmark_circle;
 const Color _noteBackgroundColor = Color(0xFFFFF4D6);
 const Color _noteIconColor = Color(0xFF9A6A00);
 
-const _pixelLevelRedactionPoint = _PrivacyPoint(
-  icon: Icons.grid_on_outlined,
-  title: 'Pixel-level redaction',
-  body:
-      'Redaction boxes are burned into exported pixels. There is no editable layer or hidden content under the covered area.',
-);
+_PrivacyPoint _pixelLevelRedactionPoint(AppLocalizations l10n) {
+  return _PrivacyPoint(
+    icon: Icons.grid_on_outlined,
+    title: l10n.pixelLevelRedaction,
+    body: l10n.pixelLevelRedactionBody,
+  );
+}
 
 void _showDetails(
   BuildContext context, {
@@ -2181,7 +2534,7 @@ class _InfoDetailsSheet extends StatelessWidget {
                     ),
                   ),
                   _CupertinoTooltip(
-                    message: 'Close',
+                    message: context.l10n.close,
                     child: _CupertinoIconControl(
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(CupertinoIcons.xmark),
@@ -2353,20 +2706,23 @@ class _MetadataCleanerView extends ConsumerWidget {
   }
 }
 
-String _metadataExportFormatDescription(RedactionState state) {
+String _metadataExportFormatDescription(
+  RedactionState state,
+  AppLocalizations l10n,
+) {
   if (!state.hasMetadataInput) {
-    return 'Pick files or a folder first. The export controls will match the selected input types.';
+    return l10n.metadataExportDescriptionNoInput;
   }
   if (state.metadataHasImages && state.metadataHasPdfs) {
-    return 'Images use the image format and quality settings. PDFs are flattened with the PDF quality setting.';
+    return l10n.metadataExportDescriptionMixed;
   }
   if (state.metadataHasImages) {
-    return 'Images use the selected PNG/JPEG format and image quality.';
+    return l10n.metadataExportDescriptionImages;
   }
   if (state.metadataHasPdfs) {
-    return 'PDFs are flattened with the selected PDF quality.';
+    return l10n.metadataExportDescriptionPdfs;
   }
-  return 'No supported files selected.';
+  return l10n.metadataExportDescriptionEmpty;
 }
 
 bool _metadataInputHasFolder(List<MetadataInputDisplayItem> items) {
@@ -2383,19 +2739,27 @@ bool _metadataCanSaveToPhotos(
       !hasFolderInput;
 }
 
-String _metadataChooserTitle(bool hasInput, bool hasFolderInput) {
-  if (hasFolderInput) return 'Folder Selected';
-  return 'Files or Folder';
+String _metadataChooserTitle(
+  bool hasInput,
+  bool hasFolderInput,
+  AppLocalizations l10n,
+) {
+  if (hasFolderInput) return l10n.folderSelected;
+  return l10n.filesOrFolder;
 }
 
-String _metadataChooserDescription(bool hasInput, bool hasFolderInput) {
+String _metadataChooserDescription(
+  bool hasInput,
+  bool hasFolderInput,
+  AppLocalizations l10n,
+) {
   if (hasFolderInput) {
-    return 'Remove the folder to choose files or another folder.';
+    return l10n.metadataChooserFolderDisabled;
   }
   if (hasInput) {
-    return 'Add more images or PDFs to this list.';
+    return l10n.metadataChooserAddMore;
   }
-  return 'Files and folders can include images or PDFs.';
+  return l10n.filesAndFoldersCanIncludeImagesOrPdfs;
 }
 
 IconData _metadataChooserIcon(bool hasInput, bool hasFolderInput) {
@@ -2437,21 +2801,24 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = _MetadataResultSummaryData.fromStatus(state.status);
+    final l10n = context.l10n;
+    final result = _MetadataResultSummaryData.fromStatus(
+      state.statusMessage,
+      l10n,
+    );
     final showImageExportControls =
         state.hasMetadataInput && state.metadataHasImages;
     final showPdfExportControls =
         state.hasMetadataInput && state.metadataHasPdfs;
     final inputItems = controller.metadataInputItems;
     final hasFolderInput = _metadataInputHasFolder(inputItems);
-    final openingPhotos =
-        state.isOpening && state.status.toLowerCase().contains('photo');
+    final openingPhotos = state.isOpening && state.statusMessage.isPhotoRelated;
     final canSaveToPhotos = _metadataCanSaveToPhotos(
       state,
       hasFolderInput: hasFolderInput,
     );
     final savingToPhotos =
-        state.isExporting && state.status.toLowerCase().contains('photos');
+        state.isExporting && state.statusMessage.isPhotosOutputRelated;
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -2465,21 +2832,21 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            'Metadata Only',
-                            style: TextStyle(
+                            l10n.metadataOnly,
+                            style: const TextStyle(
                               fontSize: 26,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                           SizedBox(height: 5),
                           Text(
-                            'Clean image or PDF metadata without drawing redaction boxes.',
-                            style: TextStyle(
+                            l10n.metadataOnlySubtitle,
+                            style: const TextStyle(
                               color: redactKitMutedTextColor,
                               fontWeight: FontWeight.w500,
                             ),
@@ -2489,8 +2856,8 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                     ),
                     _StatusPill(
                       text: state.hasMetadataInput
-                          ? '${state.metadataInputCount} selected'
-                          : 'No input',
+                          ? l10n.selectedCount(state.metadataInputCount)
+                          : l10n.noInput,
                     ),
                   ],
                 ),
@@ -2503,7 +2870,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                       child: Column(
                         children: <Widget>[
                           _DesktopMetadataPanel(
-                            title: 'Input',
+                            title: l10n.input,
                             icon: CupertinoIcons.tray_arrow_down,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2512,10 +2879,12 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                                   title: _metadataChooserTitle(
                                     state.hasMetadataInput,
                                     hasFolderInput,
+                                    l10n,
                                   ),
                                   description: _metadataChooserDescription(
                                     state.hasMetadataInput,
                                     hasFolderInput,
+                                    l10n,
                                   ),
                                   icon: _metadataChooserIcon(
                                     state.hasMetadataInput,
@@ -2531,10 +2900,10 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 10),
                                 _MetadataInputChooserButton(
-                                  title: 'Photos',
+                                  title: l10n.photos,
                                   description: hasFolderInput
-                                      ? 'Remove the folder before adding photos.'
-                                      : 'Choose images from Photos.',
+                                      ? l10n.removeFolderBeforeAddingPhotos
+                                      : l10n.chooseImagesFromPhotos,
                                   icon: CupertinoIcons.photo_on_rectangle,
                                   onPressed: _metadataPhotosAction(
                                     canClean: canClean,
@@ -2546,9 +2915,9 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                                 const SizedBox(height: 14),
                                 _MetadataInputList(
                                   items: inputItems,
-                                  emptyLabel: 'No input selected',
+                                  emptyLabel: l10n.noInputSelected,
                                   emptyDescription:
-                                      'Choose files, photos, or a folder containing images and PDFs.',
+                                      l10n.chooseFilesPhotosOrFolder,
                                   onRemove: canClean
                                       ? controller.removeMetadataInputAt
                                       : null,
@@ -2558,12 +2927,12 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                           ),
                           const SizedBox(height: 14),
                           _DesktopMetadataPanel(
-                            title: 'Output',
+                            title: l10n.output,
                             icon: CupertinoIcons.folder,
                             child: _MetadataOutputFolderPicker(
                               displayName:
                                   state.metadataOutputDirectoryDisplayName ??
-                                  'Choose input to preview output',
+                                  l10n.chooseInputPreviewOutput,
                               path: state.metadataOutputDirectoryPath,
                               onChoose: canClean && state.hasMetadataInput
                                   ? controller.chooseMetadataOutputFolder
@@ -2584,15 +2953,15 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                       child: Column(
                         children: <Widget>[
                           _DesktopMetadataPanel(
-                            title: 'Export Format',
+                            title: l10n.exportFormat,
                             icon: CupertinoIcons.slider_horizontal_3,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: <Widget>[
                                 if (!state.hasMetadataInput)
-                                  const Text(
-                                    'Choose input to show matching export controls.',
-                                    style: TextStyle(
+                                  Text(
+                                    l10n.chooseInputShowControls,
+                                    style: const TextStyle(
                                       color: redactKitMutedTextColor,
                                       height: 1.35,
                                     ),
@@ -2619,7 +2988,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                                 ],
                                 const SizedBox(height: 16),
                                 _KeepFilenamesToggle(
-                                  label: 'Keep filenames',
+                                  label: l10n.keepFilenames,
                                   value: state.preserveMetadataCleanFileNames,
                                   onChanged: canClean
                                       ? controller
@@ -2628,8 +2997,8 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 14),
                                 Text(
-                                  _metadataExportFormatDescription(state),
-                                  style: TextStyle(
+                                  _metadataExportFormatDescription(state, l10n),
+                                  style: const TextStyle(
                                     color: redactKitMutedTextColor,
                                     height: 1.35,
                                   ),
@@ -2651,7 +3020,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                             const SizedBox(height: 14),
                             _MetadataProgressBanner(
                               progress: state.metadataCleanProgress,
-                              status: state.status,
+                              status: state.statusMessage,
                             ),
                           ],
                           if (result != null) ...<Widget>[
@@ -2853,17 +3222,20 @@ class _MetadataResultSummaryData {
   });
 
   final String title;
-  final String message;
+  final RedactionStatus message;
   final _NoticeTone tone;
   final int? savedCount;
   final int ignoredCount;
   final int failedCount;
 
-  static _MetadataResultSummaryData? fromStatus(String status) {
-    if (status == 'Saved metadata-clean PDF') {
-      return const _MetadataResultSummaryData(
-        title: 'Last result',
-        message: 'Saved metadata-clean PDF',
+  static _MetadataResultSummaryData? fromStatus(
+    RedactionStatus status,
+    AppLocalizations l10n,
+  ) {
+    if (status.kind == RedactionStatusKind.savedMetadataCleanPdf) {
+      return _MetadataResultSummaryData(
+        title: l10n.lastResult,
+        message: status,
         tone: _NoticeTone.success,
         savedCount: null,
         ignoredCount: 0,
@@ -2871,20 +3243,14 @@ class _MetadataResultSummaryData {
       );
     }
 
-    final successMatch = RegExp(
-      r'^(?:Success: )?cleaned metadata for (\d+) (?:images?|files?) to (.+?)(?: \((.*)\))?$',
-      caseSensitive: false,
-    ).firstMatch(status);
-
-    if (successMatch != null) {
-      final saved = int.tryParse(successMatch.group(1) ?? '');
-      final details = successMatch.group(3) ?? '';
-      final ignored = _detailCount(details, 'ignored');
-      final failed = _detailCount(details, 'failed');
+    if (status.kind == RedactionStatusKind.metadataBatchResult) {
+      final saved = status.savedCount;
+      final ignored = status.ignoredCount ?? 0;
+      final failed = status.failedCount ?? 0;
       final tone = failed > 0 ? _NoticeTone.warning : _NoticeTone.success;
 
       return _MetadataResultSummaryData(
-        title: failed > 0 ? 'Last result: needs review' : 'Last result',
+        title: failed > 0 ? l10n.lastResultNeedsReview : l10n.lastResult,
         message: status,
         tone: tone,
         savedCount: saved,
@@ -2893,10 +3259,10 @@ class _MetadataResultSummaryData {
       );
     }
 
-    if (status.startsWith('Could not clean metadata') ||
-        status.startsWith('Could not create output folder')) {
+    if (status.kind == RedactionStatusKind.couldNotCleanMetadata ||
+        status.kind == RedactionStatusKind.couldNotCreateOutputFolder) {
       return _MetadataResultSummaryData(
-        title: 'Last result: failed',
+        title: l10n.lastResultFailed,
         message: status,
         tone: _NoticeTone.error,
         savedCount: 0,
@@ -2906,11 +3272,6 @@ class _MetadataResultSummaryData {
     }
 
     return null;
-  }
-
-  static int _detailCount(String details, String label) {
-    final match = RegExp('(\\d+) $label').firstMatch(details);
-    return int.tryParse(match?.group(1) ?? '') ?? 0;
   }
 }
 
@@ -2988,22 +3349,22 @@ class _MetadataResultSummaryCard extends StatelessWidget {
             children: <Widget>[
               if (result.savedCount != null)
                 _ResultCountPill(
-                  label: 'Cleaned',
+                  label: context.l10n.cleaned,
                   value: result.savedCount.toString(),
                 ),
               _ResultCountPill(
-                label: 'Ignored',
+                label: context.l10n.ignored,
                 value: result.ignoredCount.toString(),
               ),
               _ResultCountPill(
-                label: 'Failed',
+                label: context.l10n.failed,
                 value: result.failedCount.toString(),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            result.message,
+            _localizedStatus(result.message, context.l10n),
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -3037,7 +3398,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
                   _CupertinoActionButton(
                     onPressed: onOpenFolder,
                     icon: const Icon(CupertinoIcons.folder),
-                    label: 'Open Folder',
+                    label: context.l10n.openFolder,
                     emphasis: _CupertinoControlEmphasis.outlined,
                   ),
                 ],
@@ -3105,20 +3466,20 @@ class _MobileMetadataCleanerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final showImageExportControls =
         state.hasMetadataInput && state.metadataHasImages;
     final showPdfExportControls =
         state.hasMetadataInput && state.metadataHasPdfs;
     final inputItems = controller.metadataInputItems;
     final hasFolderInput = _metadataInputHasFolder(inputItems);
-    final openingPhotos =
-        state.isOpening && state.status.toLowerCase().contains('photo');
+    final openingPhotos = state.isOpening && state.statusMessage.isPhotoRelated;
     final canSaveToPhotos = _metadataCanSaveToPhotos(
       state,
       hasFolderInput: hasFolderInput,
     );
     final savingToPhotos =
-        state.isExporting && state.status.toLowerCase().contains('photos');
+        state.isExporting && state.statusMessage.isPhotosOutputRelated;
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -3129,32 +3490,37 @@ class _MobileMetadataCleanerView extends StatelessWidget {
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Metadata Only',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
+                    l10n.metadataOnly,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
                 _StatusPill(
                   text: state.hasMetadataInput
-                      ? '${state.metadataInputCount} selected'
-                      : 'No input',
+                      ? l10n.selectedCount(state.metadataInputCount)
+                      : l10n.noInput,
                 ),
               ],
             ),
             const SizedBox(height: 16),
             _MobileMetadataSection(
-              title: 'Input',
+              title: l10n.input,
               icon: CupertinoIcons.tray_arrow_down,
               children: <Widget>[
                 _MetadataInputChooserButton(
                   title: _metadataChooserTitle(
                     state.hasMetadataInput,
                     hasFolderInput,
+                    l10n,
                   ),
                   description: _metadataChooserDescription(
                     state.hasMetadataInput,
                     hasFolderInput,
+                    l10n,
                   ),
                   icon: _metadataChooserIcon(
                     state.hasMetadataInput,
@@ -3170,10 +3536,10 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 _MetadataInputChooserButton(
-                  title: 'Photos',
+                  title: l10n.photos,
                   description: hasFolderInput
-                      ? 'Remove the folder before adding photos.'
-                      : 'Choose images from Photos.',
+                      ? l10n.removeFolderBeforeAddingPhotos
+                      : l10n.chooseImagesFromPhotos,
                   icon: CupertinoIcons.photo_on_rectangle,
                   onPressed: _metadataPhotosAction(
                     canClean: canClean,
@@ -3185,22 +3551,21 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 const SizedBox(height: 12),
                 _MetadataInputList(
                   items: inputItems,
-                  emptyLabel: 'No input selected',
-                  emptyDescription:
-                      'Choose files, photos, or a folder containing images and PDFs.',
+                  emptyLabel: l10n.noInputSelected,
+                  emptyDescription: l10n.chooseFilesPhotosOrFolder,
                   onRemove: canClean ? controller.removeMetadataInputAt : null,
                 ),
               ],
             ),
             const SizedBox(height: 12),
             _MobileMetadataSection(
-              title: 'Output',
+              title: l10n.output,
               icon: CupertinoIcons.folder,
               children: <Widget>[
                 _MetadataOutputFolderPicker(
                   displayName:
                       state.metadataOutputDirectoryDisplayName ??
-                      'Output: app Cleaned folder',
+                      l10n.outputAppCleanedFolder,
                   path: state.metadataOutputDirectoryPath,
                   onChoose: canClean && state.hasMetadataInput
                       ? controller.chooseMetadataOutputFolder
@@ -3213,13 +3578,13 @@ class _MobileMetadataCleanerView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _MobileMetadataSection(
-              title: 'Export Format',
+              title: l10n.exportFormat,
               icon: CupertinoIcons.slider_horizontal_3,
               children: <Widget>[
                 if (!state.hasMetadataInput)
-                  const Text(
-                    'Choose input to show matching export controls.',
-                    style: TextStyle(
+                  Text(
+                    l10n.chooseInputShowControls,
+                    style: const TextStyle(
                       color: redactKitMutedTextColor,
                       height: 1.35,
                     ),
@@ -3245,7 +3610,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 ],
                 const SizedBox(height: 16),
                 _KeepFilenamesToggle(
-                  label: 'Keep filenames',
+                  label: l10n.keepFilenames,
                   value: state.preserveMetadataCleanFileNames,
                   onChanged: canClean
                       ? controller.setPreserveMetadataCleanFileNames
@@ -3253,7 +3618,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  _metadataExportFormatDescription(state),
+                  _metadataExportFormatDescription(state, l10n),
                   style: const TextStyle(
                     color: redactKitMutedTextColor,
                     height: 1.35,
@@ -3265,7 +3630,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
               const SizedBox(height: 12),
               _MetadataProgressBanner(
                 progress: state.metadataCleanProgress,
-                status: state.status,
+                status: state.statusMessage,
               ),
             ],
             const SizedBox(height: 14),
@@ -3335,7 +3700,7 @@ class _MetadataProgressBanner extends StatelessWidget {
   const _MetadataProgressBanner({required this.progress, required this.status});
 
   final double? progress;
-  final String status;
+  final RedactionStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -3353,7 +3718,7 @@ class _MetadataProgressBanner extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            status,
+            _localizedStatus(status, context.l10n),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w500),
@@ -3431,8 +3796,11 @@ class _MetadataInputList extends StatelessWidget {
           if (index > 0) const SizedBox(height: 8),
           _MetadataInputRow(
             icon: _metadataInputDisplayIcon(items[index].kind),
-            label: items[index].label,
-            detail: items[index].detail,
+            label: _metadataInputDisplayLabel(items[index], context.l10n),
+            detail: _localizedMetadataInputDetail(
+              items[index].detail,
+              context.l10n,
+            ),
             selected: true,
             onRemove: onRemove == null
                 ? null
@@ -3532,6 +3900,44 @@ IconData _metadataInputDisplayIcon(MetadataInputDisplayKind kind) {
   };
 }
 
+String _metadataInputDisplayLabel(
+  MetadataInputDisplayItem item,
+  AppLocalizations l10n,
+) {
+  if (item.kind != MetadataInputDisplayKind.folder) return item.label;
+  return l10n.metadataSummaryFolder(item.label);
+}
+
+String _localizedMetadataInputDetail(
+  MetadataInputDetail detail,
+  AppLocalizations l10n,
+) {
+  return switch (detail.kind) {
+    MetadataInputDetailKind.path => detail.path ?? detail.fallbackLabel,
+    MetadataInputDetailKind.photoLibrary => l10n.metadataDetailPhotoLibrary,
+    MetadataInputDetailKind.image => l10n.metadataDetailImage,
+    MetadataInputDetailKind.pdf => l10n.metadataDetailPdf,
+    MetadataInputDetailKind.contents => _localizedMetadataContentsDetail(
+      detail,
+      l10n,
+    ),
+  };
+}
+
+String _localizedMetadataContentsDetail(
+  MetadataInputDetail detail,
+  AppLocalizations l10n,
+) {
+  final parts = <String>[
+    if (detail.imageCount > 0) l10n.metadataDetailImages(detail.imageCount),
+    if (detail.pdfCount > 0) l10n.metadataDetailPdfs(detail.pdfCount),
+    if (detail.ignoredCount > 0)
+      l10n.metadataDetailIgnored(detail.ignoredCount),
+  ];
+  if (parts.isEmpty) return detail.fallbackLabel;
+  return parts.join(l10n.metadataDetailSeparator);
+}
+
 class _MetadataOutputFolderPicker extends StatelessWidget {
   const _MetadataOutputFolderPicker({
     required this.displayName,
@@ -3588,14 +3994,14 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
                 _CupertinoActionButton(
                   onPressed: onOpen,
                   icon: const Icon(Icons.folder_open),
-                  label: 'Open Folder',
+                  label: context.l10n.openFolder,
                   emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               if (onChoose != null)
                 _CupertinoActionButton(
                   onPressed: onChoose,
                   icon: const Icon(Icons.drive_folder_upload_outlined),
-                  label: 'Choose Folder',
+                  label: context.l10n.chooseFolder,
                   emphasis: _CupertinoControlEmphasis.outlined,
                 ),
             ],
@@ -3633,7 +4039,7 @@ class _MetadataDestinationActions extends StatelessWidget {
               child: CupertinoActivityIndicator(color: Colors.white),
             )
           : const Icon(Icons.save_alt),
-      label: 'Save to Files',
+      label: context.l10n.saveToFiles,
       emphasis: _CupertinoControlEmphasis.filled,
     );
 
@@ -3656,7 +4062,7 @@ class _MetadataDestinationActions extends StatelessWidget {
                     child: CupertinoActivityIndicator(color: Colors.white),
                   )
                 : const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
-            label: 'Save to Photos',
+            label: context.l10n.saveToPhotos,
             emphasis: _CupertinoControlEmphasis.filled,
           ),
         ),
@@ -3684,17 +4090,17 @@ void _showMetadataOutputDetails(
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Full Output',
-                      style: TextStyle(
+                      context.l10n.fullOutput,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                   _CupertinoTooltip(
-                    message: 'Close',
+                    message: context.l10n.close,
                     child: _CupertinoIconControl(
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(CupertinoIcons.xmark),
@@ -3721,9 +4127,9 @@ void _showMetadataOutputDetails(
               ),
               if (path != null && path != output) ...<Widget>[
                 const SizedBox(height: 12),
-                const Text(
-                  'Folder Path',
-                  style: TextStyle(fontWeight: FontWeight.w500),
+                Text(
+                  context.l10n.folderPath,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -3751,15 +4157,15 @@ void _showMetadataOutputDetails(
                     if (!context.mounted) return;
                     _showCompletionNotice(
                       context,
-                      const _CompletionNotice(
-                        title: 'Copied',
-                        message: 'Output path copied.',
+                      _CompletionNotice(
+                        title: context.l10n.copied,
+                        message: context.l10n.outputPathCopied,
                         tone: _NoticeTone.success,
                       ),
                     );
                   },
                   icon: const Icon(Icons.copy),
-                  label: 'Copy',
+                  label: context.l10n.copy,
                   emphasis: _CupertinoControlEmphasis.outlined,
                 ),
               ),
@@ -3782,6 +4188,10 @@ class _CanvasArea extends ConsumerWidget {
     required this.onOpen,
     required this.emptyTitle,
     required this.openLabel,
+    this.cropRect,
+    this.onCropChanged,
+    this.onCancelCrop,
+    this.onApplyCrop,
     this.onOpenPhotos,
     this.margin = const EdgeInsets.fromLTRB(16, 0, 0, 16),
     this.showBorder = true,
@@ -3798,6 +4208,10 @@ class _CanvasArea extends ConsumerWidget {
   final void Function(Offset localPosition, Rect imageRect) onUpdateRedaction;
   final VoidCallback onFinishRedaction;
   final VoidCallback onOpen;
+  final Rect? cropRect;
+  final ValueChanged<Rect>? onCropChanged;
+  final VoidCallback? onCancelCrop;
+  final VoidCallback? onApplyCrop;
   final VoidCallback? onOpenPhotos;
   final String emptyTitle;
   final String openLabel;
@@ -3848,7 +4262,7 @@ class _CanvasArea extends ConsumerWidget {
                           child: _SourceActionButton(
                             onPressed: state.isOpening ? null : onOpenPhotos,
                             icon: Icons.photo_library_outlined,
-                            label: 'Photos',
+                            label: context.l10n.photos,
                           ),
                         ),
                       ),
@@ -3868,6 +4282,27 @@ class _CanvasArea extends ConsumerWidget {
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
           final imageRect = _fitImageRect(image, size);
+          final cropRect = this.cropRect;
+          final onCropChanged = this.onCropChanged;
+          final onCancelCrop = this.onCancelCrop;
+          final onApplyCrop = this.onApplyCrop;
+
+          if (cropRect != null &&
+              onCropChanged != null &&
+              onCancelCrop != null &&
+              onApplyCrop != null) {
+            return _CropCanvas(
+              state: state,
+              image: image,
+              imageRect: imageRect,
+              canvasSize: size,
+              redactions: redactions,
+              cropRect: cropRect,
+              onCropChanged: onCropChanged,
+              onCancelCrop: onCancelCrop,
+              onApplyCrop: onApplyCrop,
+            );
+          }
 
           if (enablePanZoom) {
             return _ZoomableRedactionCanvas(
@@ -3978,7 +4413,7 @@ class _MobileCanvasEmptyState extends StatelessWidget {
               _SourceActionButton(
                 onPressed: isOpening ? null : onOpenPhotos,
                 icon: CupertinoIcons.photo_on_rectangle,
-                label: 'Photos',
+                label: context.l10n.photos,
               ),
             ],
           ],
@@ -4293,6 +4728,402 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
   }
 }
 
+enum _CropDragHandle {
+  newRect,
+  move,
+  left,
+  topLeft,
+  top,
+  topRight,
+  right,
+  bottomRight,
+  bottom,
+  bottomLeft,
+}
+
+class _CropCanvas extends StatefulWidget {
+  const _CropCanvas({
+    required this.state,
+    required this.image,
+    required this.imageRect,
+    required this.canvasSize,
+    required this.redactions,
+    required this.cropRect,
+    required this.onCropChanged,
+    required this.onCancelCrop,
+    required this.onApplyCrop,
+  });
+
+  final RedactionState state;
+  final ui.Image image;
+  final Rect imageRect;
+  final Size canvasSize;
+  final List<RedactionRegion> redactions;
+  final Rect cropRect;
+  final ValueChanged<Rect> onCropChanged;
+  final VoidCallback onCancelCrop;
+  final VoidCallback onApplyCrop;
+
+  @override
+  State<_CropCanvas> createState() => _CropCanvasState();
+}
+
+class _CropCanvasState extends State<_CropCanvas> {
+  static const double _handleRadius = 24;
+
+  _CropDragHandle? _dragHandle;
+  Rect? _dragStartRect;
+  Offset? _dragStartPoint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        _RedactionPaintSurface(
+          state: widget.state,
+          image: widget.image,
+          imageRect: widget.imageRect,
+          redactions: widget.redactions,
+        ),
+        Positioned.fill(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: _handlePanStart,
+              onPanUpdate: _handlePanUpdate,
+              onPanEnd: (_) => _clearDrag(),
+              onPanCancel: _clearDrag,
+              child: CustomPaint(
+                painter: _CropOverlayPainter(
+                  image: widget.image,
+                  imageRect: widget.imageRect,
+                  cropRect: widget.cropRect,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 18,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: redactKitSecondaryBackgroundColor.withValues(
+                    alpha: 0.94,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: redactKitSubtleBorderColor),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: redactKitChromeShadowColor,
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: widget.onCancelCrop,
+                          icon: const Icon(CupertinoIcons.xmark),
+                          label: context.l10n.cancelCrop,
+                          emphasis: _CupertinoControlEmphasis.outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: widget.onApplyCrop,
+                          icon: const Icon(CupertinoIcons.check_mark),
+                          label: context.l10n.applyCrop,
+                          emphasis: _CupertinoControlEmphasis.filled,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handlePanStart(DragStartDetails details) {
+    final position = details.localPosition;
+    final displayCrop = _imageToDisplayRect(
+      widget.cropRect,
+      widget.imageRect,
+      widget.image,
+    );
+    final hit = _hitTestHandle(displayCrop, position);
+    if (hit == null && !widget.imageRect.contains(position)) return;
+
+    final point = _displayToImagePoint(
+      position,
+      widget.imageRect,
+      widget.image,
+    );
+    _dragHandle = hit ?? _CropDragHandle.newRect;
+    _dragStartPoint = point;
+    _dragStartRect = widget.cropRect;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    final handle = _dragHandle;
+    final startPoint = _dragStartPoint;
+    final startRect = _dragStartRect;
+    if (handle == null || startPoint == null || startRect == null) return;
+
+    final point = _displayToImagePoint(
+      details.localPosition,
+      widget.imageRect,
+      widget.image,
+    );
+    final delta = point - startPoint;
+    final next = switch (handle) {
+      _CropDragHandle.newRect => Rect.fromPoints(startPoint, point),
+      _CropDragHandle.move => _clampMovedCropRect(
+        startRect.shift(delta),
+        widget.image,
+      ),
+      _CropDragHandle.left => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.topLeft => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top + delta.dy,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.top => Rect.fromLTRB(
+        startRect.left,
+        startRect.top + delta.dy,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.topRight => Rect.fromLTRB(
+        startRect.left,
+        startRect.top + delta.dy,
+        startRect.right + delta.dx,
+        startRect.bottom,
+      ),
+      _CropDragHandle.right => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right + delta.dx,
+        startRect.bottom,
+      ),
+      _CropDragHandle.bottomRight => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right + delta.dx,
+        startRect.bottom + delta.dy,
+      ),
+      _CropDragHandle.bottom => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right,
+        startRect.bottom + delta.dy,
+      ),
+      _CropDragHandle.bottomLeft => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top,
+        startRect.right,
+        startRect.bottom + delta.dy,
+      ),
+    };
+
+    widget.onCropChanged(_clampCropRectForImage(next, widget.image));
+  }
+
+  void _clearDrag() {
+    _dragHandle = null;
+    _dragStartRect = null;
+    _dragStartPoint = null;
+  }
+
+  _CropDragHandle? _hitTestHandle(Rect rect, Offset position) {
+    final corners = <_CropDragHandle, Offset>{
+      _CropDragHandle.topLeft: rect.topLeft,
+      _CropDragHandle.topRight: rect.topRight,
+      _CropDragHandle.bottomRight: rect.bottomRight,
+      _CropDragHandle.bottomLeft: rect.bottomLeft,
+    };
+
+    for (final entry in corners.entries) {
+      if ((entry.value - position).distance <= _handleRadius) {
+        return entry.key;
+      }
+    }
+
+    final nearLeft = (position.dx - rect.left).abs() <= _handleRadius;
+    final nearRight = (position.dx - rect.right).abs() <= _handleRadius;
+    final nearTop = (position.dy - rect.top).abs() <= _handleRadius;
+    final nearBottom = (position.dy - rect.bottom).abs() <= _handleRadius;
+    final withinX = position.dx >= rect.left && position.dx <= rect.right;
+    final withinY = position.dy >= rect.top && position.dy <= rect.bottom;
+
+    if (nearLeft && withinY) return _CropDragHandle.left;
+    if (nearTop && withinX) return _CropDragHandle.top;
+    if (nearRight && withinY) return _CropDragHandle.right;
+    if (nearBottom && withinX) return _CropDragHandle.bottom;
+    if (rect.contains(position)) return _CropDragHandle.move;
+
+    return null;
+  }
+}
+
+class _CropOverlayPainter extends CustomPainter {
+  const _CropOverlayPainter({
+    required this.image,
+    required this.imageRect,
+    required this.cropRect,
+  });
+
+  final ui.Image image;
+  final Rect imageRect;
+  final Rect cropRect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final displayCrop = _imageToDisplayRect(cropRect, imageRect, image);
+    final dimPath = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(imageRect)
+      ..addRect(displayCrop);
+    canvas.drawPath(dimPath, Paint()..color = const Color(0x77000000));
+
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.42)
+      ..strokeWidth = 1;
+    for (var index = 1; index <= 2; index += 1) {
+      final dx = displayCrop.left + displayCrop.width * index / 3;
+      final dy = displayCrop.top + displayCrop.height * index / 3;
+      canvas.drawLine(
+        Offset(dx, displayCrop.top),
+        Offset(dx, displayCrop.bottom),
+        gridPaint,
+      );
+      canvas.drawLine(
+        Offset(displayCrop.left, dy),
+        Offset(displayCrop.right, dy),
+        gridPaint,
+      );
+    }
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(displayCrop, const Radius.circular(8)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..color = redactKitAccentColor,
+    );
+
+    final handlePaint = Paint()..color = redactKitAccentColor;
+    for (final corner in <Offset>[
+      displayCrop.topLeft,
+      displayCrop.topRight,
+      displayCrop.bottomRight,
+      displayCrop.bottomLeft,
+    ]) {
+      canvas.drawCircle(corner, 6, Paint()..color = Colors.white);
+      canvas.drawCircle(corner, 4, handlePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) {
+    return oldDelegate.image != image ||
+        oldDelegate.imageRect != imageRect ||
+        oldDelegate.cropRect != cropRect;
+  }
+}
+
+Rect _imageToDisplayRect(Rect imageSpaceRect, Rect imageRect, ui.Image image) {
+  final scaleX = imageRect.width / image.width;
+  final scaleY = imageRect.height / image.height;
+
+  return Rect.fromLTRB(
+    imageRect.left + imageSpaceRect.left * scaleX,
+    imageRect.top + imageSpaceRect.top * scaleY,
+    imageRect.left + imageSpaceRect.right * scaleX,
+    imageRect.top + imageSpaceRect.bottom * scaleY,
+  );
+}
+
+Offset _displayToImagePoint(Offset local, Rect imageRect, ui.Image image) {
+  final x = ((local.dx - imageRect.left) * image.width / imageRect.width)
+      .clamp(0.0, image.width.toDouble())
+      .toDouble();
+  final y = ((local.dy - imageRect.top) * image.height / imageRect.height)
+      .clamp(0.0, image.height.toDouble())
+      .toDouble();
+  return Offset(x, y);
+}
+
+Rect _clampMovedCropRect(Rect rect, ui.Image image) {
+  final imageWidth = math.max(1.0, image.width.toDouble());
+  final imageHeight = math.max(1.0, image.height.toDouble());
+  final width = math.min(rect.width, imageWidth);
+  final height = math.min(rect.height, imageHeight);
+  final left = rect.left
+      .clamp(0.0, math.max(0.0, imageWidth - width))
+      .toDouble();
+  final top = rect.top
+      .clamp(0.0, math.max(0.0, imageHeight - height))
+      .toDouble();
+  return Rect.fromLTWH(left, top, width, height);
+}
+
+Rect _clampCropRectForImage(Rect rect, ui.Image image) {
+  final imageWidth = math.max(1.0, image.width.toDouble());
+  final imageHeight = math.max(1.0, image.height.toDouble());
+  final minSize = math.min(12.0, math.min(imageWidth, imageHeight));
+  final normalized = Rect.fromLTRB(
+    math.min(rect.left, rect.right),
+    math.min(rect.top, rect.bottom),
+    math.max(rect.left, rect.right),
+    math.max(rect.top, rect.bottom),
+  );
+
+  var left = normalized.left.clamp(0.0, imageWidth).toDouble();
+  var right = normalized.right.clamp(0.0, imageWidth).toDouble();
+  var top = normalized.top.clamp(0.0, imageHeight).toDouble();
+  var bottom = normalized.bottom.clamp(0.0, imageHeight).toDouble();
+
+  if (right - left < minSize) {
+    final centerX = ((left + right) / 2).clamp(0.0, imageWidth).toDouble();
+    left = (centerX - minSize / 2)
+        .clamp(0.0, math.max(0.0, imageWidth - minSize))
+        .toDouble();
+    right = math.min(imageWidth, left + minSize);
+  }
+
+  if (bottom - top < minSize) {
+    final centerY = ((top + bottom) / 2).clamp(0.0, imageHeight).toDouble();
+    top = (centerY - minSize / 2)
+        .clamp(0.0, math.max(0.0, imageHeight - minSize))
+        .toDouble();
+    bottom = math.min(imageHeight, top + minSize);
+  }
+
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
 class _RedactionPaintSurface extends StatelessWidget {
   const _RedactionPaintSurface({
     required this.state,
@@ -4332,12 +5163,16 @@ class _TopBar extends StatelessWidget {
     required this.canUndo,
     required this.canClear,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.isOpening,
     required this.isExporting,
     required this.onOpen,
     required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExport,
     required this.onShare,
     required this.onSaveToPhotos,
@@ -4346,16 +5181,20 @@ class _TopBar extends StatelessWidget {
 
   final _WorkspaceMode mode;
   final ValueChanged<_WorkspaceMode> onModeChanged;
-  final String status;
+  final RedactionStatus status;
   final bool canUndo;
   final bool canClear;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final bool isOpening;
   final bool isExporting;
   final VoidCallback onOpen;
   final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExport;
   final VoidCallback onShare;
   final VoidCallback onSaveToPhotos;
@@ -4399,7 +5238,7 @@ class _TopBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     _DesktopToolbarAction(
-                      message: 'Files',
+                      message: context.l10n.files,
                       onPressed: isOpening ? null : onOpen,
                       icon: isOpening
                           ? const SizedBox.square(
@@ -4410,24 +5249,39 @@ class _TopBar extends StatelessWidget {
                     ),
                     if (mode == _WorkspaceMode.redact)
                       _DesktopToolbarAction(
-                        message: 'Photos',
+                        message: context.l10n.photos,
                         onPressed: isOpening ? null : onOpenPhotos,
                         icon: const Icon(Icons.photo_library_outlined),
                       ),
                     const _ToolbarDivider(),
                     _DesktopToolbarAction(
-                      message: 'Undo',
+                      message: context.l10n.undo,
                       onPressed: canUndo ? onUndo : null,
                       icon: const Icon(Icons.undo),
                     ),
                     _DesktopToolbarAction(
-                      message: 'Clear',
+                      message: context.l10n.clear,
                       onPressed: canClear ? onClear : null,
                       icon: const Icon(Icons.delete_outline),
                     ),
+                    if (mode == _WorkspaceMode.redact)
+                      _DesktopToolbarAction(
+                        message: isCropping
+                            ? context.l10n.cancelCrop
+                            : context.l10n.crop,
+                        onPressed: canCrop
+                            ? isCropping
+                                  ? onCancelCrop
+                                  : onStartCrop
+                            : null,
+                        icon: const Icon(Icons.crop),
+                        emphasis: isCropping
+                            ? _ToolbarEmphasis.tonal
+                            : _ToolbarEmphasis.plain,
+                      ),
                     const _ToolbarDivider(),
                     _DesktopToolbarAction(
-                      message: 'Save to Files',
+                      message: context.l10n.saveToFiles,
                       onPressed: canExport ? onExport : null,
                       icon: isExporting
                           ? const SizedBox.square(
@@ -4441,7 +5295,7 @@ class _TopBar extends StatelessWidget {
                     ),
                     if (mode == _WorkspaceMode.redact) ...<Widget>[
                       _DesktopToolbarAction(
-                        message: 'Save to Photos',
+                        message: context.l10n.saveToPhotos,
                         onPressed: canExport ? onSaveToPhotos : null,
                         icon: const Icon(
                           CupertinoIcons.photo_fill_on_rectangle_fill,
@@ -4449,7 +5303,7 @@ class _TopBar extends StatelessWidget {
                         emphasis: _ToolbarEmphasis.tonal,
                       ),
                       _DesktopToolbarAction(
-                        message: 'Share',
+                        message: context.l10n.share,
                         onPressed: canExport ? onShare : null,
                         icon: const Icon(Icons.ios_share),
                         emphasis: _ToolbarEmphasis.tonal,
@@ -4462,9 +5316,9 @@ class _TopBar extends StatelessWidget {
           const SizedBox(width: 10),
           _CupertinoTooltip(
             message: switch (mode) {
-              _WorkspaceMode.redact => 'Image details',
-              _WorkspaceMode.pdf => 'PDF details',
-              _WorkspaceMode.metadata => 'Metadata details',
+              _WorkspaceMode.redact => context.l10n.imageDetails,
+              _WorkspaceMode.pdf => context.l10n.pdfDetails,
+              _WorkspaceMode.metadata => context.l10n.metadataDetails,
             },
             child: _CupertinoIconControl(
               onPressed: onHelp,
@@ -4502,9 +5356,9 @@ class _DesktopAppTitle extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        const Text(
-          'Redact Kit',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+        Text(
+          context.l10n.appTitle,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -4514,7 +5368,7 @@ class _DesktopAppTitle extends StatelessWidget {
 class _DesktopStatusBadge extends StatelessWidget {
   const _DesktopStatusBadge({required this.status, required this.busy});
 
-  final String status;
+  final RedactionStatus status;
   final bool busy;
 
   @override
@@ -4528,7 +5382,11 @@ class _DesktopStatusBadge extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         child: Text(
-          busy ? 'Working: $status' : status,
+          busy
+              ? context.l10n.workingStatus(
+                  _localizedStatus(status, context.l10n),
+                )
+              : _localizedStatus(status, context.l10n),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -4614,6 +5472,7 @@ class _SidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final image = this.image;
 
     return Container(
@@ -4630,21 +5489,21 @@ class _SidePanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             _InspectorSection(
-              title: 'Tool',
+              title: l10n.tool,
               icon: Icons.format_color_fill_outlined,
               child: Row(
                 children: <Widget>[
                   _ColorSwatchButton(
                     color: const Color(0xFF050505),
                     selected: selectedColor == const Color(0xFF050505),
-                    label: 'Black',
+                    label: l10n.black,
                     onTap: () => onColorChanged(const Color(0xFF050505)),
                   ),
                   const SizedBox(width: 10),
                   _ColorSwatchButton(
                     color: Colors.white,
                     selected: selectedColor == Colors.white,
-                    label: 'White',
+                    label: l10n.white,
                     onTap: () => onColorChanged(Colors.white),
                   ),
                 ],
@@ -4652,25 +5511,25 @@ class _SidePanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _InspectorSection(
-              title: 'Image',
+              title: l10n.image,
               icon: Icons.image_outlined,
               child: Column(
                 children: <Widget>[
                   _MetricRow(
-                    label: 'Pixels',
+                    label: l10n.pixels,
                     value: image == null
-                        ? 'None'
+                        ? l10n.none
                         : '${image.width} x ${image.height}',
                   ),
-                  _MetricRow(label: 'Redactions', value: '$redactionCount'),
-                  const _MetricRow(label: 'Cover', value: '100% opaque'),
-                  _MetricRow(label: 'Format', value: exportFormat.label),
+                  _MetricRow(label: l10n.redactions, value: '$redactionCount'),
+                  _MetricRow(label: l10n.cover, value: l10n.coverOpaque),
+                  _MetricRow(label: l10n.format, value: exportFormat.label),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             _InspectorSection(
-              title: 'Export',
+              title: l10n.export,
               icon: Icons.save_alt,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4687,15 +5546,15 @@ class _SidePanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _KeepFilenamesToggle(
-                    label: 'Keep filename',
+                    label: l10n.keepFilename,
                     value: preserveRedactionExportFileName,
                     onChanged: onPreserveRedactionExportFileNameChanged,
                   ),
                   const SizedBox(height: 14),
                   Text(
                     exportFormat == ExportFormat.png
-                        ? 'PNG is lossless. The exported file is rebuilt from visible pixels.'
-                        : 'JPEG is lossy. Lower quality makes smaller files.',
+                        ? l10n.pngLosslessExportNote
+                        : l10n.jpegLossyExportNote,
                     style: const TextStyle(
                       color: redactKitMutedTextColor,
                       height: 1.35,
@@ -4736,6 +5595,7 @@ class _PdfSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final pageImage = state.pdfPageImage;
     final canExport = state.hasPdf && !state.isExporting;
     final canMoveBack = state.hasPdf && state.pdfCurrentPage > 1;
@@ -4756,21 +5616,21 @@ class _PdfSidePanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             _InspectorSection(
-              title: 'Tool',
+              title: l10n.tool,
               icon: Icons.format_color_fill_outlined,
               child: Row(
                 children: <Widget>[
                   _ColorSwatchButton(
                     color: const Color(0xFF050505),
                     selected: selectedColor == const Color(0xFF050505),
-                    label: 'Black',
+                    label: l10n.black,
                     onTap: () => onColorChanged(const Color(0xFF050505)),
                   ),
                   const SizedBox(width: 10),
                   _ColorSwatchButton(
                     color: Colors.white,
                     selected: selectedColor == Colors.white,
-                    label: 'White',
+                    label: l10n.white,
                     onTap: () => onColorChanged(Colors.white),
                   ),
                 ],
@@ -4778,28 +5638,28 @@ class _PdfSidePanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _InspectorSection(
-              title: 'PDF',
+              title: l10n.pdf,
               icon: Icons.picture_as_pdf_outlined,
               child: Column(
                 children: <Widget>[
                   _MetricRow(
-                    label: 'Page',
+                    label: l10n.page,
                     value: state.hasPdf
                         ? '${state.pdfCurrentPage} / ${state.pdfPageCount}'
-                        : 'None',
+                        : l10n.none,
                   ),
                   _MetricRow(
-                    label: 'Pixels',
+                    label: l10n.pixels,
                     value: pageImage == null
-                        ? 'None'
+                        ? l10n.none
                         : '${pageImage.width} x ${pageImage.height}',
                   ),
                   _MetricRow(
-                    label: 'Page redactions',
+                    label: l10n.pageRedactions,
                     value: '${state.currentPdfRedactions.length}',
                   ),
                   _MetricRow(
-                    label: 'Total redactions',
+                    label: l10n.totalRedactions,
                     value: '${state.pdfRedactionCount}',
                   ),
                   const SizedBox(height: 10),
@@ -4825,7 +5685,7 @@ class _PdfSidePanel extends StatelessWidget {
                         child: _CupertinoActionButton(
                           onPressed: canMoveBack ? onPreviousPage : null,
                           icon: const Icon(Icons.chevron_left),
-                          label: 'Prev',
+                          label: l10n.prev,
                           emphasis: _CupertinoControlEmphasis.outlined,
                         ),
                       ),
@@ -4834,7 +5694,7 @@ class _PdfSidePanel extends StatelessWidget {
                         child: _CupertinoActionButton(
                           onPressed: canMoveForward ? onNextPage : null,
                           icon: const Icon(Icons.chevron_right),
-                          label: 'Next',
+                          label: l10n.next,
                           emphasis: _CupertinoControlEmphasis.outlined,
                         ),
                       ),
@@ -4845,7 +5705,7 @@ class _PdfSidePanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _InspectorSection(
-              title: 'Export',
+              title: l10n.export,
               icon: Icons.save_alt,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4856,14 +5716,14 @@ class _PdfSidePanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _KeepFilenamesToggle(
-                    label: 'Keep filename',
+                    label: l10n.keepFilename,
                     value: state.preservePdfExportFileName,
                     onChanged: onPreservePdfExportFileNameChanged,
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'PDF exports are flattened into image pages. Redacted export removes original PDF metadata and hidden document structure.',
-                    style: TextStyle(
+                  Text(
+                    l10n.pdfFlattenExportNote,
+                    style: const TextStyle(
                       color: redactKitMutedTextColor,
                       height: 1.35,
                     ),
@@ -4879,7 +5739,7 @@ class _PdfSidePanel extends StatelessWidget {
                             ),
                           )
                         : const Icon(Icons.save_alt),
-                    label: 'Save Redacted PDF',
+                    label: l10n.saveRedactedPdf,
                     emphasis: _CupertinoControlEmphasis.filled,
                   ),
                 ],
@@ -4963,17 +5823,16 @@ class _ImageQualityPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     if (format == ExportFormat.jpeg) {
       return _JpegQualityPresetPicker(
-        title: 'Image quality',
+        title: context.l10n.imageQuality,
         selected: selected,
         onChanged: onChanged,
       );
     }
 
-    return const _ReadOnlyQualityIndicator(
-      title: 'Image quality',
-      value: 'Original lossless',
-      description:
-          'PNG output keeps visible pixels lossless and strips metadata.',
+    return _ReadOnlyQualityIndicator(
+      title: context.l10n.imageQuality,
+      value: context.l10n.originalLossless,
+      description: context.l10n.pngQualityDescription,
     );
   }
 }
@@ -4990,12 +5849,12 @@ class _PdfQualityPresetPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _QualityPicker<PdfQualityPreset>(
-      title: 'PDF quality',
-      value: selected.label,
+      title: context.l10n.pdfQuality,
+      value: _pdfQualityLabel(selected, context.l10n),
       values: PdfQualityPreset.values,
       selected: selected,
-      labelFor: (preset) => preset.label,
-      description: selected.description,
+      labelFor: (preset) => _pdfQualityLabel(preset, context.l10n),
+      description: _pdfQualityDescription(selected, context.l10n),
       onChanged: onChanged,
     );
   }
@@ -5016,14 +5875,49 @@ class _JpegQualityPresetPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return _QualityPicker<JpegQualityPreset>(
       title: title,
-      value: selected.label,
+      value: _jpegQualityLabel(selected, context.l10n),
       values: JpegQualityPreset.values,
       selected: selected,
-      labelFor: (preset) => preset.label,
-      description: selected.description,
+      labelFor: (preset) => _jpegQualityLabel(preset, context.l10n),
+      description: _jpegQualityDescription(selected, context.l10n),
       onChanged: onChanged,
     );
   }
+}
+
+String _jpegQualityLabel(JpegQualityPreset preset, AppLocalizations l10n) {
+  return switch (preset) {
+    JpegQualityPreset.low => l10n.low,
+    JpegQualityPreset.medium => l10n.medium,
+    JpegQualityPreset.high => l10n.high,
+  };
+}
+
+String _jpegQualityDescription(
+  JpegQualityPreset preset,
+  AppLocalizations l10n,
+) {
+  return switch (preset) {
+    JpegQualityPreset.low => l10n.jpegLowDescription,
+    JpegQualityPreset.medium => l10n.jpegMediumDescription,
+    JpegQualityPreset.high => l10n.jpegHighDescription,
+  };
+}
+
+String _pdfQualityLabel(PdfQualityPreset preset, AppLocalizations l10n) {
+  return switch (preset) {
+    PdfQualityPreset.low => l10n.low,
+    PdfQualityPreset.medium => l10n.medium,
+    PdfQualityPreset.high => l10n.high,
+  };
+}
+
+String _pdfQualityDescription(PdfQualityPreset preset, AppLocalizations l10n) {
+  return switch (preset) {
+    PdfQualityPreset.low => l10n.pdfLowDescription,
+    PdfQualityPreset.medium => l10n.pdfMediumDescription,
+    PdfQualityPreset.high => l10n.pdfHighDescription,
+  };
 }
 
 class _QualityPicker<T extends Object> extends StatelessWidget {
@@ -5118,13 +6012,13 @@ class _ReadOnlyQualityIndicator extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: redactKitBorderColor),
           ),
-          child: const SizedBox(
+          child: SizedBox(
             width: double.infinity,
             height: 42,
             child: Center(
               child: Text(
-                'Original',
-                style: TextStyle(fontWeight: FontWeight.w500),
+                context.l10n.original,
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
           ),

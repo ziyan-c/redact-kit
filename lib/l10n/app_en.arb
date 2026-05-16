@@ -1,0 +1,510 @@
+{
+  "@@locale": "en",
+  "appTitle": "Redact Kit",
+  "ready": "Ready",
+  "fileDialogOpen": "Open",
+  "fileDialogChoose": "Choose",
+  "fileDialogChooseFiles": "Choose Files",
+  "fileDialogChooseFolder": "Choose Folder",
+  "fileDialogSave": "Save",
+  "shareCleanImageTitle": "Share clean image",
+  "shareCleanPdfTitle": "Share clean PDF",
+  "openFoldersUnsupportedMessage": "Opening output folders is only available on macOS.",
+  "workingStatus": "Working: {status}",
+  "@workingStatus": {
+    "placeholders": {
+      "status": {}
+    }
+  },
+  "image": "Image",
+  "pdf": "PDF",
+  "metadata": "Metadata",
+  "imageDetails": "Image details",
+  "pdfDetails": "PDF details",
+  "metadataDetails": "Metadata details",
+  "settings": "Settings",
+  "files": "Files",
+  "photos": "Photos",
+  "undo": "Undo",
+  "clear": "Clear",
+  "crop": "Crop",
+  "cancelCrop": "Cancel",
+  "applyCrop": "Apply",
+  "export": "Export",
+  "save": "Save",
+  "share": "Share",
+  "saveToFiles": "Save to Files",
+  "saveToPhotos": "Save to Photos",
+  "input": "Input",
+  "output": "Output",
+  "exportFormat": "Export Format",
+  "chooseImage": "Choose an image",
+  "choosePdf": "Choose a PDF",
+  "chooseFilesOrFolder": "Choose Files or Folder",
+  "filesAndFoldersCanIncludeImagesOrPdfs": "Files and folders can include images or PDFs.",
+  "choosePhotos": "Choose Photos",
+  "chooseImagesFromPhotos": "Choose images from Photos.",
+  "removeFolderBeforeAddingPhotos": "Remove the folder before adding photos.",
+  "noInput": "No input",
+  "noInputSelected": "No input selected",
+  "chooseFilesPhotosOrFolder": "Choose files, photos, or a folder containing images and PDFs.",
+  "metadataOnly": "Metadata Only",
+  "metadataOnlySubtitle": "Clean image or PDF metadata without drawing redaction boxes.",
+  "selectedCount": "{count} selected",
+  "@selectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chooseInputPreviewOutput": "Choose input to preview output",
+  "outputAppCleanedFolder": "Output: app Cleaned folder",
+  "chooseInputShowControls": "Choose input to show matching export controls.",
+  "keepFilenames": "Keep filenames",
+  "keepFilename": "Keep filename",
+  "openFolder": "Open Folder",
+  "chooseFolder": "Choose Folder",
+  "fullOutput": "Full Output",
+  "folderPath": "Folder Path",
+  "copy": "Copy",
+  "copied": "Copied",
+  "outputPathCopied": "Output path copied.",
+  "lastResult": "Last result",
+  "lastResultNeedsReview": "Last result: needs review",
+  "lastResultFailed": "Last result: failed",
+  "lastResultSavedMetadataPdf": "Saved metadata-clean PDF",
+  "cleaned": "Cleaned",
+  "ignored": "Ignored",
+  "failed": "Failed",
+  "tool": "Tool",
+  "black": "Black",
+  "white": "White",
+  "pixels": "Pixels",
+  "none": "None",
+  "redactions": "Redactions",
+  "cover": "Cover",
+  "format": "Format",
+  "pages": "Pages",
+  "page": "Page",
+  "currentPage": "Current page",
+  "pageRedactions": "Page redactions",
+  "totalRedactions": "Total redactions",
+  "prev": "Prev",
+  "next": "Next",
+  "pagePlaceholder": "Page",
+  "saveRedactedPdf": "Save Redacted PDF",
+  "pdfExport": "PDF Export",
+  "close": "Close",
+  "details": "Details",
+  "imagePrivacy": "Image Privacy",
+  "pdfPrivacy": "PDF Privacy",
+  "metadataOnlyInfo": "Metadata Only",
+  "pixelLevelRedaction": "Pixel-level redaction",
+  "pixelLevelRedactionBody": "Redaction boxes are burned into exported pixels. There is no editable layer or hidden content under the covered area.",
+  "metadataRemoved": "Metadata removed",
+  "imageMetadataRemovedBody": "Exports remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, comments, and other hidden image metadata.",
+  "outputFormatPoint": "Output format",
+  "imageOutputFormatBody": "PNG is lossless. JPEG is smaller and may soften edges. Both are written as fresh files without original metadata.",
+  "hiddenPdfDataRemoved": "Hidden PDF data is removed",
+  "hiddenPdfDataRemovedBody": "The export drops original text layers, annotations, forms, links, attachments, OCR text, and document metadata.",
+  "pdfMetadataRemovedBody": "The clean PDF is written without the original title, author, creator, producer, dates, keywords, trailer ID, or XMP metadata.",
+  "flattenRedactedPages": "Flatten redacted pages",
+  "flattenRedactedPagesBody": "Each page is rendered as an image. Redaction boxes are burned in, then a new PDF is built at the original page size.",
+  "pdfOutputBody": "The exported PDF keeps the original page size and uses the selected PDF quality setting.",
+  "tradeoff": "Tradeoff",
+  "pdfTradeoffBody": "Flattened PDFs are safer to verify, but text is no longer selectable or searchable.",
+  "cleanWithoutRedaction": "Clean without redaction",
+  "cleanWithoutRedactionBody": "Pick images, PDFs, Photos, or one folder. This mode removes hidden metadata without drawing boxes.",
+  "metadataOnlyRemovedBody": "Images remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, and comments. PDFs are rebuilt without original document metadata or hidden structure.",
+  "metadataOnlyOutputBody": "Save to the app Cleaned folder, choose another folder, or save image-only results to Photos.",
+  "note": "Note",
+  "metadataOnlyNoteBody": "Metadata-only does not hide visible text or pixels. Use Image or PDF mode when private content is visible on the page.",
+  "metadataExportDescriptionNoInput": "Pick files or a folder first. The export controls will match the selected input types.",
+  "metadataExportDescriptionMixed": "Images use the image format and quality settings. PDFs are flattened with the PDF quality setting.",
+  "metadataExportDescriptionImages": "Images use the selected PNG/JPEG format and image quality.",
+  "metadataExportDescriptionPdfs": "PDFs are flattened with the selected PDF quality.",
+  "metadataExportDescriptionEmpty": "No supported files selected.",
+  "folderSelected": "Folder Selected",
+  "filesOrFolder": "Files or Folder",
+  "metadataChooserFolderDisabled": "Remove the folder to choose files or another folder.",
+  "metadataChooserAddMore": "Add more images or PDFs to this list.",
+  "imageQuality": "Image quality",
+  "pdfQuality": "PDF quality",
+  "originalLossless": "Original lossless",
+  "pngQualityDescription": "PNG output keeps visible pixels lossless and strips metadata.",
+  "original": "Original",
+  "low": "Low",
+  "medium": "Medium",
+  "high": "High",
+  "jpegLowDescription": "Smallest file, more visible loss.",
+  "jpegMediumDescription": "Balanced size and image quality.",
+  "jpegHighDescription": "Larger file, cleaner image.",
+  "pdfLowDescription": "Smallest PDFs, softer page images.",
+  "pdfMediumDescription": "Balanced readability and file size.",
+  "pdfHighDescription": "Sharper pages, larger flattened PDFs.",
+  "pngLosslessExportNote": "PNG is lossless. The exported file is rebuilt from visible pixels.",
+  "jpegLossyExportNote": "JPEG is lossy. Lower quality makes smaller files.",
+  "pdfFlattenExportNote": "PDF exports are flattened into image pages. Redacted export removes original PDF metadata and hidden document structure.",
+  "cleanImageExported": "Clean image exported",
+  "redactionsBurnedMetadataRemoved": "Redactions are burned in and metadata is removed.",
+  "savedToPhotos": "Saved to Photos",
+  "cleanImageReadyInPhotos": "The clean image is ready in your photo library.",
+  "readyToShare": "Ready to share",
+  "cleanCopyPreparedForSharing": "A clean copy was prepared for sharing.",
+  "pdfCleaned": "PDF cleaned",
+  "flattenedPdfSavedWithoutOriginalMetadata": "A flattened PDF was saved without original metadata.",
+  "cleanImageSavedWithoutMetadata": "A clean image copy was saved without private metadata.",
+  "cleanPdfExported": "Clean PDF exported",
+  "pagesFlattenedPdfMetadataRemoved": "Pages were flattened and PDF metadata was removed.",
+  "metadataCleaned": "Metadata cleaned",
+  "cleanCopiesSavedToOutputFolder": "Clean copies were saved to the output folder.",
+  "metadataCleanedWithNotes": "Metadata cleaned with notes",
+  "someFilesNeedAttention": "Some files need attention. Check the status text for details.",
+  "couldNotFinish": "Could not finish",
+  "redactionCountReady": "{count, plural, =1{1 redaction ready} other{{count} redactions ready}}",
+  "@redactionCountReady": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "redactionCountShort": "{count, plural, =1{1 redaction} other{{count} redactions}}",
+  "@redactionCountShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "onPageCount": "{count} on page",
+  "@onPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "inputSelected": "Input selected",
+  "coverOpaque": "100% opaque",
+  "metadataSummaryFolder": "Folder: {name}",
+  "@metadataSummaryFolder": {
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "metadataSummaryImages": "{count, plural, =1{1 image} other{{count} images}}",
+  "@metadataSummaryImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataSummaryPhotos": "{count, plural, =1{1 photo} other{{count} photos}}",
+  "@metadataSummaryPhotos": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataSummaryPdfs": "{count, plural, =1{1 PDF} other{{count} PDFs}}",
+  "@metadataSummaryPdfs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataSummaryFiles": "{count, plural, =1{1 file} other{{count} files}}",
+  "@metadataSummaryFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataDetailPhotoLibrary": "Photo library",
+  "metadataDetailImage": "Image",
+  "metadataDetailPdf": "PDF",
+  "metadataDetailImages": "{count, plural, =1{1 image} other{{count} images}}",
+  "@metadataDetailImages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataDetailPdfs": "{count, plural, =1{1 PDF} other{{count} PDFs}}",
+  "@metadataDetailPdfs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataDetailIgnored": "{count} ignored",
+  "@metadataDetailIgnored": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "metadataDetailSeparator": ", ",
+  "statusOpeningImage": "Opening image",
+  "statusOpeningPhotoLibrary": "Opening photo library",
+  "statusOpeningPdf": "Opening PDF",
+  "statusLoadedImage": "Loaded {width} x {height}px",
+  "@statusLoadedImage": {
+    "placeholders": {
+      "width": { "type": "int" },
+      "height": { "type": "int" }
+    }
+  },
+  "statusAdjustingCrop": "Adjust crop",
+  "statusCroppingImage": "Cropping image",
+  "statusImageCropped": "Cropped to {width} x {height}px",
+  "@statusImageCropped": {
+    "placeholders": {
+      "width": { "type": "int" },
+      "height": { "type": "int" }
+    }
+  },
+  "statusCropCanceled": "Crop canceled",
+  "statusPdfPage": "PDF page {pageNumber} of {pageCount}",
+  "@statusPdfPage": {
+    "placeholders": {
+      "pageNumber": { "type": "int" },
+      "pageCount": { "type": "int" }
+    }
+  },
+  "statusRenderingPdfPage": "Rendering PDF page {pageNumber}",
+  "@statusRenderingPdfPage": {
+    "placeholders": {
+      "pageNumber": { "type": "int" }
+    }
+  },
+  "statusFlatteningCleanPdf": "Flattening clean PDF",
+  "statusFlatteningPdfPage": "Flattening PDF page {pageNumber} of {pageCount}",
+  "@statusFlatteningPdfPage": {
+    "placeholders": {
+      "pageNumber": { "type": "int" },
+      "pageCount": { "type": "int" }
+    }
+  },
+  "statusChoosingPdf": "Choosing PDF",
+  "statusChoosingFilesOrFolder": "Choosing files or folder",
+  "statusChoosingImageFile": "Choosing image file",
+  "statusChoosingImageFiles": "Choosing image files",
+  "statusChoosingPdfFile": "Choosing PDF file",
+  "statusChoosingPdfFiles": "Choosing PDF files",
+  "statusChoosingFolder": "Choosing folder",
+  "statusChoosingImagesFromPhotos": "Choosing images from Photos",
+  "statusChoosingOutputFolder": "Choosing output folder",
+  "statusAddingFiles": "Adding files",
+  "statusAddingPhotos": "Adding photos",
+  "statusSelectedMetadataInput": "Selected {label}",
+  "@statusSelectedMetadataInput": {
+    "placeholders": {
+      "label": {}
+    }
+  },
+  "statusRemovedMetadataInput": "Removed {label}",
+  "@statusRemovedMetadataInput": {
+    "placeholders": {
+      "label": {}
+    }
+  },
+  "statusNoSupportedImagesOrPdfsSelected": "No supported images or PDFs selected",
+  "statusNoSupportedImagesOrPdfsFoundInFolder": "No supported images or PDFs found in that folder",
+  "statusNoPhotosSelected": "No photos selected",
+  "statusRemoveFolderBeforeAddingPhotos": "Remove the folder before adding photos",
+  "statusChooseMetadataInputFirst": "Choose metadata input first",
+  "statusMetadataOutputFolderSet": "Metadata output folder set",
+  "statusStartCleaningFirstToCreateOutputFolder": "Start cleaning first to create the output folder",
+  "statusOpenedOutputFolder": "Opened output folder",
+  "statusEncodingCleanImage": "Encoding clean {format}",
+  "@statusEncodingCleanImage": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusRemovingImageMetadata": "Removing metadata from {format}",
+  "@statusRemovingImageMetadata": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusPreparingCleanImageToShare": "Preparing clean {format} to share",
+  "@statusPreparingCleanImageToShare": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusSavingCleanImageToPhotos": "Saving clean {format} to Photos",
+  "@statusSavingCleanImageToPhotos": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusExportedCleanImage": "Exported clean {format}",
+  "@statusExportedCleanImage": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusExportedCleanImageWithRedactions": "Exported clean {format} with {count, plural, =1{1 redaction} other{{count} redactions}}",
+  "@statusExportedCleanImageWithRedactions": {
+    "placeholders": {
+      "format": {},
+      "count": { "type": "int" }
+    }
+  },
+  "statusSavedCleanImageToPhotos": "Saved clean {format} to Photos",
+  "@statusSavedCleanImageToPhotos": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusSharedCleanImage": "Shared clean {format}",
+  "@statusSharedCleanImage": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusSavedMetadataCleanImage": "Saved metadata-clean {format}",
+  "@statusSavedMetadataCleanImage": {
+    "placeholders": {
+      "format": {}
+    }
+  },
+  "statusCleaningPdfMetadata": "Cleaning PDF metadata",
+  "statusSavedMetadataCleanPdf": "Saved metadata-clean PDF",
+  "statusExportedCleanPdf": "Exported clean PDF",
+  "statusExportedCleanPdfWithRedactions": "Exported clean PDF with {count, plural, =1{1 redaction} other{{count} redactions}}",
+  "@statusExportedCleanPdfWithRedactions": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "statusExportCanceled": "Export canceled",
+  "statusMetadataRemovalCanceled": "Metadata removal canceled",
+  "statusPdfExportCanceled": "PDF export canceled",
+  "statusPdfCleanCanceled": "PDF clean canceled",
+  "statusShareCanceled": "Share canceled",
+  "statusSaveCanceled": "Save canceled",
+  "statusStartingMetadataClean": "Starting metadata clean",
+  "statusPreparingOutputFolder": "Preparing output folder",
+  "statusStartingMetadataCleanToPhotos": "Starting metadata clean to Photos",
+  "statusPhotosOutputImagesOnly": "Photos output is available for image files only",
+  "statusCleaningMetadataItem": "Cleaning {label} ({current}/{total})",
+  "@statusCleaningMetadataItem": {
+    "placeholders": {
+      "label": {},
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "statusCleaningMetadataPdfPage": "Cleaning {label} page {pageNumber} of {pageCount} ({current}/{total})",
+  "@statusCleaningMetadataPdfPage": {
+    "placeholders": {
+      "label": {},
+      "pageNumber": { "type": "int" },
+      "pageCount": { "type": "int" },
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "statusSavingMetadataItemToPhotos": "Saving {label} to Photos ({current}/{total})",
+  "@statusSavingMetadataItemToPhotos": {
+    "placeholders": {
+      "label": {},
+      "current": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "statusMetadataBatchNoSaved": "Could not clean selected files{details}",
+  "@statusMetadataBatchNoSaved": {
+    "placeholders": {
+      "details": {}
+    }
+  },
+  "statusMetadataBatchCompleted": "Cleaned {savedCount} files to {destinationName}{details}",
+  "@statusMetadataBatchCompleted": {
+    "placeholders": {
+      "savedCount": { "type": "int" },
+      "destinationName": {},
+      "details": {}
+    }
+  },
+  "statusMetadataBatchIgnoredDetail": "{count} ignored",
+  "@statusMetadataBatchIgnoredDetail": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "statusMetadataBatchFailedDetail": "{count} failed",
+  "@statusMetadataBatchFailedDetail": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "statusMetadataBatchFailedWithReasonDetail": "{count} failed: {reason}",
+  "@statusMetadataBatchFailedWithReasonDetail": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "reason": {}
+    }
+  },
+  "statusMetadataBatchDetailsWrapper": " ({details})",
+  "@statusMetadataBatchDetailsWrapper": {
+    "placeholders": {
+      "details": {}
+    }
+  },
+  "statusMetadataBatchDetailSeparator": ", ",
+  "statusRedactionsCleared": "Redactions cleared",
+  "statusPdfPageRedactionsCleared": "PDF page redactions cleared",
+  "statusPdfRedactionCountReady": "PDF page {pageNumber}: {count, plural, =1{1 redaction ready} other{{count} redactions ready}}",
+  "@statusPdfRedactionCountReady": {
+    "placeholders": {
+      "pageNumber": { "type": "int" },
+      "count": { "type": "int" }
+    }
+  },
+  "statusCouldNotOpenPdf": "Could not open PDF",
+  "statusCouldNotOpenImage": "Could not open image",
+  "statusCouldNotDecodeImage": "Could not decode this image",
+  "statusCouldNotExportImage": "Could not export image",
+  "statusCouldNotExportPdf": "Could not export PDF",
+  "statusCouldNotChooseMetadataInput": "Could not choose metadata input",
+  "statusCouldNotAddMetadataFiles": "Could not add metadata files",
+  "statusCouldNotAddPhotos": "Could not add photos",
+  "statusCouldNotChooseOutputFolder": "Could not choose output folder",
+  "statusCouldNotOpenOutputFolder": "Could not open output folder",
+  "statusCouldNotCleanMetadata": "Could not clean metadata",
+  "statusCouldNotCreateOutputFolder": "Could not create output folder",
+  "statusCouldNotCreateOutputFolderAutomatic": "Could not create output folder: macOS sandbox did not allow the planned output location. Use Output > Choose Folder and select or create {path}.",
+  "@statusCouldNotCreateOutputFolderAutomatic": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "statusCouldNotCreateOutputFolderPath": "Could not create output folder: {path}. Choose another output folder.",
+  "@statusCouldNotCreateOutputFolderPath": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "statusCouldNotRenderPdfPage": "Could not render PDF page",
+  "statusFailureWithDetail": "{title}: {detail}",
+  "@statusFailureWithDetail": {
+    "placeholders": {
+      "title": {},
+      "detail": {}
+    }
+  }
+}

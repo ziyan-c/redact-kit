@@ -7,6 +7,7 @@ import 'export_format.dart';
 import 'jpeg_quality_preset.dart';
 import 'pdf_quality_preset.dart';
 import 'redaction_region.dart';
+import 'redaction_status.dart';
 
 part 'redaction_state.freezed.dart';
 
@@ -24,11 +25,12 @@ abstract class RedactionState with _$RedactionState {
     @Default(false) bool preservePdfExportFileName,
     @Default(<int, List<RedactionRegion>>{})
     Map<int, List<RedactionRegion>> pdfRedactions,
-    @Default('Ready') String status,
+    @Default(RedactionStatus.ready()) RedactionStatus statusMessage,
     @Default(Color(0xFF050505)) Color redactionColor,
     Offset? draftStart,
     Rect? draftRect,
     Color? draftColor,
+    Rect? cropRect,
     @Default(false) bool isOpening,
     @Default(false) bool isExporting,
     @Default(ExportFormat.jpeg) ExportFormat exportFormat,
@@ -48,6 +50,8 @@ abstract class RedactionState with _$RedactionState {
   }) = _RedactionState;
 
   bool get hasImage => image != null;
+  bool get isCropping => cropRect != null;
+  String get status => statusMessage.fallbackMessage;
   bool get hasRedactions => redactions.isNotEmpty;
   bool get hasPdf => pdfPageImage != null && pdfPageCount > 0;
   List<RedactionRegion> get currentPdfRedactions =>

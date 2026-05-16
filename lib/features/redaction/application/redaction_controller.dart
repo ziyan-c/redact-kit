@@ -16,9 +16,11 @@ import '../data/pdf_document_service.dart';
 import '../data/png_metadata.dart';
 import '../domain/export_format.dart';
 import '../domain/jpeg_quality_preset.dart';
+import '../domain/metadata_input_display.dart';
 import '../domain/pdf_quality_preset.dart';
 import '../domain/redaction_region.dart';
 import '../domain/redaction_state.dart';
+import '../domain/redaction_status.dart';
 
 part 'redaction_controller.g.dart';
 
@@ -52,14 +54,14 @@ class RedactionController extends _$RedactionController {
 
   Future<void> openImage() async {
     await _openImage(
-      status: 'Opening image',
+      status: const RedactionStatus.openingImage(),
       loadImage: () => ref.read(fileChannelServiceProvider).openImageFile(),
     );
   }
 
   Future<void> openPhotoLibrary() async {
     await _openImage(
-      status: 'Opening photo library',
+      status: const RedactionStatus.openingPhotoLibrary(),
       loadImage: () =>
           ref.read(fileChannelServiceProvider).openPhotoLibraryImage(),
     );
@@ -68,7 +70,10 @@ class RedactionController extends _$RedactionController {
   Future<void> openPdf() async {
     if (state.isOpening) return;
 
-    state = state.copyWith(isOpening: true, status: 'Opening PDF');
+    state = state.copyWith(
+      isOpening: true,
+      statusMessage: const RedactionStatus.openingPdf(),
+    );
 
     PdfDocumentHandle? document;
     ui.Image? pageImage;
@@ -79,7 +84,7 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       if (pickedPdf == null) {
-        state = state.copyWith(status: 'Ready');
+        state = state.copyWith(statusMessage: const RedactionStatus.ready());
         return;
       }
 
@@ -110,18 +115,26 @@ class RedactionController extends _$RedactionController {
         draftRect: null,
         draftStart: null,
         draftColor: null,
-        status: 'Loaded PDF page 1 of ${_pdfDocument!.pagesCount}',
+        cropRect: null,
+        statusMessage: RedactionStatus.loadedPdf(
+          pageNumber: 1,
+          pageCount: _pdfDocument!.pagesCount,
+        ),
       );
 
       previousPageImage?.dispose();
       await previousDocument?.close();
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: error.message ?? 'Could not open PDF');
+      state = state.copyWith(
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotOpenPdf()
+            : RedactionStatus.externalMessage(error.message!),
+      );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: 'Could not open PDF: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotOpenPdf(_friendlyError(error)),
       );
     } finally {
       pageImage?.dispose();
@@ -133,19 +146,19 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> _openImage({
-    required String status,
+    required RedactionStatus status,
     required Future<PickedImageBytes?> Function() loadImage,
   }) async {
     if (state.isOpening) return;
 
-    state = state.copyWith(isOpening: true, status: status);
+    state = state.copyWith(isOpening: true, statusMessage: status);
 
     try {
       final pickedImage = await loadImage();
       if (!ref.mounted) return;
 
       if (pickedImage == null) {
-        state = state.copyWith(status: 'Ready');
+        state = state.copyWith(statusMessage: const RedactionStatus.ready());
         return;
       }
 
@@ -164,15 +177,25 @@ class RedactionController extends _$RedactionController {
         draftRect: null,
         draftStart: null,
         draftColor: null,
-        status: 'Loaded ${decoded.width} x ${decoded.height}px',
+        cropRect: null,
+        statusMessage: RedactionStatus.loadedImage(
+          width: decoded.width,
+          height: decoded.height,
+        ),
       );
       previous?.dispose();
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: error.message ?? 'Could not open image');
+      state = state.copyWith(
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotOpenImage()
+            : RedactionStatus.externalMessage(error.message!),
+      );
     } catch (_) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: 'Could not decode this image');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.couldNotDecodeImage(),
+      );
     } finally {
       if (ref.mounted) {
         state = state.copyWith(isOpening: false);
@@ -182,15 +205,15 @@ class RedactionController extends _$RedactionController {
 
   Future<void> exportImage() async {
     await _exportCleanImage(
-      progressStatus: 'Encoding clean ${state.exportFormat.label}',
-      canceledStatus: 'Export canceled',
+      progressStatus: RedactionStatus.encodingCleanImage(
+        state.exportFormat.label,
+      ),
+      canceledStatus: const RedactionStatus.exportCanceled(),
       successStatus: (snapshot) {
-        final redactionCount = snapshot.redactions.length;
-        if (redactionCount == 0) {
-          return 'Exported clean ${snapshot.exportFormat.label}';
-        }
-
-        return 'Exported clean ${snapshot.exportFormat.label} with $redactionCount redaction${redactionCount == 1 ? '' : 's'}';
+        return RedactionStatus.exportedCleanImage(
+          formatLabel: snapshot.exportFormat.label,
+          redactionCount: snapshot.redactions.length,
+        );
       },
       fileName: _redactedExportFileName,
       action: (service, snapshot, name, bytes) => service.saveImage(
@@ -203,10 +226,12 @@ class RedactionController extends _$RedactionController {
 
   Future<void> exportMetadataCleanImage() async {
     await _exportCleanImage(
-      progressStatus: 'Removing metadata from ${state.exportFormat.label}',
-      canceledStatus: 'Metadata removal canceled',
+      progressStatus: RedactionStatus.removingImageMetadata(
+        state.exportFormat.label,
+      ),
+      canceledStatus: const RedactionStatus.metadataRemovalCanceled(),
       successStatus: (snapshot) =>
-          'Saved metadata-clean ${snapshot.exportFormat.label}',
+          RedactionStatus.savedMetadataCleanImage(snapshot.exportFormat.label),
       fileName: (snapshot) => _metadataCleanFileName(snapshot.exportFormat),
       redactionsForExport: (_) => const <RedactionRegion>[],
       action: (service, snapshot, name, bytes) => service.saveImage(
@@ -219,13 +244,10 @@ class RedactionController extends _$RedactionController {
 
   Future<void> exportPdf() async {
     await _exportCleanPdf(
-      progressStatus: 'Flattening clean PDF',
-      canceledStatus: 'PDF export canceled',
+      progressStatus: const RedactionStatus.flatteningCleanPdf(),
+      canceledStatus: const RedactionStatus.pdfExportCanceled(),
       successStatus: (snapshot) {
-        final redactionCount = snapshot.pdfRedactionCount;
-        if (redactionCount == 0) return 'Exported clean PDF';
-
-        return 'Exported clean PDF with $redactionCount redaction${redactionCount == 1 ? '' : 's'}';
+        return RedactionStatus.exportedCleanPdf(snapshot.pdfRedactionCount);
       },
       fileName: (snapshot) => _pdfExportFileName(snapshot, redacted: true),
       redactionsForExport: (snapshot) => snapshot.pdfRedactions,
@@ -234,9 +256,9 @@ class RedactionController extends _$RedactionController {
 
   Future<void> exportMetadataCleanPdf() async {
     await _exportCleanPdf(
-      progressStatus: 'Cleaning PDF metadata',
-      canceledStatus: 'PDF clean canceled',
-      successStatus: (_) => 'Saved metadata-clean PDF',
+      progressStatus: const RedactionStatus.cleaningPdfMetadata(),
+      canceledStatus: const RedactionStatus.pdfCleanCanceled(),
+      successStatus: (_) => const RedactionStatus.savedMetadataCleanPdf(),
       fileName: (snapshot) => _pdfExportFileName(snapshot, redacted: false),
       redactionsForExport: (_) => const <int, List<RedactionRegion>>{},
     );
@@ -245,7 +267,10 @@ class RedactionController extends _$RedactionController {
   Future<void> cleanMetadataPdfFromFile() async {
     if (state.isOpening || state.isExporting) return;
 
-    state = state.copyWith(isOpening: true, status: 'Choosing PDF');
+    state = state.copyWith(
+      isOpening: true,
+      statusMessage: const RedactionStatus.choosingPdf(),
+    );
 
     PdfDocumentHandle? document;
     try {
@@ -255,7 +280,9 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       if (pickedPdf == null) {
-        state = state.copyWith(status: 'PDF clean canceled');
+        state = state.copyWith(
+          statusMessage: const RedactionStatus.pdfCleanCanceled(),
+        );
         return;
       }
 
@@ -267,7 +294,7 @@ class RedactionController extends _$RedactionController {
       state = state.copyWith(
         isOpening: false,
         isExporting: true,
-        status: 'Cleaning PDF metadata',
+        statusMessage: const RedactionStatus.cleaningPdfMetadata(),
       );
 
       final bytes = await _renderCleanPdf(
@@ -277,7 +304,10 @@ class RedactionController extends _$RedactionController {
         onPage: (pageNumber, pageCount) {
           if (!ref.mounted) return;
           state = state.copyWith(
-            status: 'Flattening PDF page $pageNumber of $pageCount',
+            statusMessage: RedactionStatus.flatteningPdfPage(
+              pageNumber: pageNumber,
+              pageCount: pageCount,
+            ),
           );
         },
       );
@@ -293,17 +323,21 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       state = state.copyWith(
-        status: result == null
-            ? 'PDF clean canceled'
-            : 'Saved metadata-clean PDF',
+        statusMessage: result == null
+            ? const RedactionStatus.pdfCleanCanceled()
+            : const RedactionStatus.savedMetadataCleanPdf(),
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: error.message ?? 'Could not export PDF');
+      state = state.copyWith(
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotExportPdf()
+            : RedactionStatus.externalMessage(error.message!),
+      );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: 'Could not export PDF: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotExportPdf(_friendlyError(error)),
       );
     } finally {
       await document?.close();
@@ -331,8 +365,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataFilesOrFolder() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing files or folder',
-      emptyStatus: 'No supported images or PDFs selected',
+      choosingStatus: const RedactionStatus.choosingFilesOrFolder(),
+      emptyStatus: const RedactionStatus.noSupportedImagesOrPdfsSelected(),
       loadSelection: (service) async {
         final pickedInput = await service.chooseMetadataFilesOrFolder();
         if (pickedInput == null) return null;
@@ -350,7 +384,10 @@ class RedactionController extends _$RedactionController {
       return;
     }
 
-    state = state.copyWith(isOpening: true, status: 'Adding files');
+    state = state.copyWith(
+      isOpening: true,
+      statusMessage: const RedactionStatus.addingFiles(),
+    );
 
     try {
       final service = ref.read(fileChannelServiceProvider);
@@ -363,7 +400,8 @@ class RedactionController extends _$RedactionController {
       if (pickedSelection == null || pickedSelection.isEmpty) {
         state = state.copyWith(
           isOpening: false,
-          status: 'No supported images or PDFs selected',
+          statusMessage:
+              const RedactionStatus.noSupportedImagesOrPdfsSelected(),
         );
         return;
       }
@@ -373,7 +411,7 @@ class RedactionController extends _$RedactionController {
       var nextState = _stateWithMetadataInput(
         state,
         selection,
-        status: 'Selected ${selection.inputLabel}',
+        status: RedactionStatus.selectedMetadataInput(selection.inputSummary),
       );
       nextState = await _stateWithPreviewedMetadataOutput(
         nextState,
@@ -386,13 +424,15 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
       state = state.copyWith(
         isOpening: false,
-        status: error.message ?? 'Could not add metadata files',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotAddMetadataFiles()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (_) {
       if (!ref.mounted) return;
       state = state.copyWith(
         isOpening: false,
-        status: 'Could not add metadata files',
+        statusMessage: RedactionStatus.couldNotAddMetadataFiles(),
       );
     }
   }
@@ -409,11 +449,16 @@ class RedactionController extends _$RedactionController {
     if (existingSelection.sources.any(
       (source) => source.kind == MetadataInputDisplayKind.folder,
     )) {
-      state = state.copyWith(status: 'Remove the folder before adding photos');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.removeFolderBeforeAddingPhotos(),
+      );
       return;
     }
 
-    state = state.copyWith(isOpening: true, status: 'Adding photos');
+    state = state.copyWith(
+      isOpening: true,
+      statusMessage: const RedactionStatus.addingPhotos(),
+    );
 
     try {
       final service = ref.read(fileChannelServiceProvider);
@@ -421,7 +466,10 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       if (images.isEmpty) {
-        state = state.copyWith(isOpening: false, status: 'No photos selected');
+        state = state.copyWith(
+          isOpening: false,
+          statusMessage: const RedactionStatus.noPhotosSelected(),
+        );
         return;
       }
 
@@ -432,7 +480,7 @@ class RedactionController extends _$RedactionController {
       var nextState = _stateWithMetadataInput(
         state,
         selection,
-        status: 'Selected ${selection.inputLabel}',
+        status: RedactionStatus.selectedMetadataInput(selection.inputSummary),
       );
       nextState = await _stateWithPreviewedMetadataOutput(
         nextState,
@@ -445,11 +493,16 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
       state = state.copyWith(
         isOpening: false,
-        status: error.message ?? 'Could not add photos',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotAddPhotos()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (_) {
       if (!ref.mounted) return;
-      state = state.copyWith(isOpening: false, status: 'Could not add photos');
+      state = state.copyWith(
+        isOpening: false,
+        statusMessage: RedactionStatus.couldNotAddPhotos(),
+      );
     }
   }
 
@@ -472,7 +525,7 @@ class RedactionController extends _$RedactionController {
       _metadataInputSelection = null;
       state = _stateWithoutMetadataInput(
         state,
-        status: 'Removed ${removedSource.displayLabel}',
+        status: RedactionStatus.removedMetadataInput(removedSource.summary),
       );
       return;
     }
@@ -481,7 +534,7 @@ class RedactionController extends _$RedactionController {
     var nextState = _stateWithMetadataInput(
       state,
       nextSelection,
-      status: 'Removed ${removedSource.displayLabel}',
+      status: RedactionStatus.removedMetadataInput(removedSource.summary),
     );
     nextState = await _stateWithPreviewedMetadataOutput(
       nextState,
@@ -498,8 +551,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataImageFromFiles() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing image file',
-      emptyStatus: 'Metadata clean canceled',
+      choosingStatus: const RedactionStatus.choosingImageFile(),
+      emptyStatus: const RedactionStatus.metadataRemovalCanceled(),
       loadSelection: (service) async {
         final image = await service.chooseMetadataImageFile();
         if (image == null) return null;
@@ -510,8 +563,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataImagesFromFiles() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing image files',
-      emptyStatus: 'Metadata clean canceled',
+      choosingStatus: const RedactionStatus.choosingImageFiles(),
+      emptyStatus: const RedactionStatus.metadataRemovalCanceled(),
       loadSelection: (service) async {
         final images = await service.chooseMetadataImageFiles();
         if (images.isEmpty) return null;
@@ -523,8 +576,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataPdfFromFiles() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing PDF file',
-      emptyStatus: 'Metadata clean canceled',
+      choosingStatus: const RedactionStatus.choosingPdfFile(),
+      emptyStatus: const RedactionStatus.metadataRemovalCanceled(),
       loadSelection: (service) async {
         final pdf = await service.chooseMetadataPdfFile();
         if (pdf == null) return null;
@@ -535,8 +588,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataPdfsFromFiles() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing PDF files',
-      emptyStatus: 'Metadata clean canceled',
+      choosingStatus: const RedactionStatus.choosingPdfFiles(),
+      emptyStatus: const RedactionStatus.metadataRemovalCanceled(),
       loadSelection: (service) async {
         final pdfs = await service.chooseMetadataPdfFiles();
         if (pdfs.isEmpty) return null;
@@ -548,8 +601,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataFolder() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing folder',
-      emptyStatus: 'No supported images or PDFs found in that folder',
+      choosingStatus: const RedactionStatus.choosingFolder(),
+      emptyStatus: const RedactionStatus.noSupportedImagesOrPdfsFoundInFolder(),
       loadSelection: (service) async {
         final folder = await service.chooseMetadataImageFolder();
         if (folder == null) return null;
@@ -560,8 +613,8 @@ class RedactionController extends _$RedactionController {
 
   Future<void> chooseMetadataImagesFromPhotos() async {
     await _chooseMetadataInput(
-      choosingStatus: 'Choosing images from Photos',
-      emptyStatus: 'Metadata clean canceled',
+      choosingStatus: const RedactionStatus.choosingImagesFromPhotos(),
+      emptyStatus: const RedactionStatus.metadataRemovalCanceled(),
       loadSelection: (service) async {
         final images = await service.chooseMetadataPhotoImages();
         if (images.isEmpty) return null;
@@ -575,12 +628,17 @@ class RedactionController extends _$RedactionController {
 
     final selection = _metadataInputSelection;
     if (selection == null) {
-      state = state.copyWith(status: 'Choose metadata input first');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.chooseMetadataInputFirst(),
+      );
       return;
     }
 
-    final previousStatus = state.status;
-    state = state.copyWith(isOpening: true, status: 'Choosing output folder');
+    final previousStatus = state.statusMessage;
+    state = state.copyWith(
+      isOpening: true,
+      statusMessage: const RedactionStatus.choosingOutputFolder(),
+    );
 
     try {
       final destination = await ref
@@ -589,11 +647,11 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       state = destination == null
-          ? state.copyWith(status: previousStatus)
+          ? state.copyWith(statusMessage: previousStatus)
           : _stateWithMetadataInput(
               state,
               selection.withSelectedDestination(destination),
-              status: 'Metadata output folder set',
+              status: const RedactionStatus.metadataOutputFolderSet(),
             );
       if (destination != null) {
         _metadataInputSelection = selection.withSelectedDestination(
@@ -603,11 +661,15 @@ class RedactionController extends _$RedactionController {
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: error.message ?? 'Could not choose output folder',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotChooseOutputFolder()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (_) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: 'Could not choose output folder');
+      state = state.copyWith(
+        statusMessage: RedactionStatus.couldNotChooseOutputFolder(),
+      );
     } finally {
       if (ref.mounted) {
         state = state.copyWith(isOpening: false);
@@ -621,7 +683,8 @@ class RedactionController extends _$RedactionController {
     final path = state.metadataOutputDirectoryPath;
     if (path == null || path.trim().isEmpty) {
       state = state.copyWith(
-        status: 'Start cleaning first to create the output folder',
+        statusMessage:
+            const RedactionStatus.startCleaningFirstToCreateOutputFolder(),
       );
       return;
     }
@@ -629,26 +692,34 @@ class RedactionController extends _$RedactionController {
     try {
       await ref.read(fileChannelServiceProvider).openDirectory(path);
       if (!ref.mounted) return;
-      state = state.copyWith(status: 'Opened output folder');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.openedOutputFolder(),
+      );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: error.message ?? 'Could not open output folder',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotOpenOutputFolder()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: 'Could not open output folder: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotOpenOutputFolder(
+          _friendlyError(error),
+        ),
       );
     }
   }
 
   Future<void> shareImage() async {
     await _exportCleanImage(
-      progressStatus: 'Preparing clean ${state.exportFormat.label} to share',
-      canceledStatus: 'Share canceled',
+      progressStatus: RedactionStatus.preparingCleanImageToShare(
+        state.exportFormat.label,
+      ),
+      canceledStatus: const RedactionStatus.shareCanceled(),
       successStatus: (snapshot) =>
-          'Shared clean ${snapshot.exportFormat.label}',
+          RedactionStatus.sharedCleanImage(snapshot.exportFormat.label),
       fileName: _redactedExportFileName,
       action: (service, snapshot, name, bytes) => service.shareImage(
         name: name,
@@ -660,10 +731,12 @@ class RedactionController extends _$RedactionController {
 
   Future<void> saveImageToPhotos() async {
     await _exportCleanImage(
-      progressStatus: 'Saving clean ${state.exportFormat.label} to Photos',
-      canceledStatus: 'Save canceled',
+      progressStatus: RedactionStatus.savingCleanImageToPhotos(
+        state.exportFormat.label,
+      ),
+      canceledStatus: const RedactionStatus.saveCanceled(),
       successStatus: (snapshot) =>
-          'Saved clean ${snapshot.exportFormat.label} to Photos',
+          RedactionStatus.savedCleanImageToPhotos(snapshot.exportFormat.label),
       fileName: _redactedExportFileName,
       action: (service, snapshot, name, bytes) =>
           service.saveImageToPhotos(name: name, bytes: bytes),
@@ -671,9 +744,9 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> _exportCleanImage({
-    required String progressStatus,
-    required String canceledStatus,
-    required String Function(RedactionState snapshot) successStatus,
+    required RedactionStatus progressStatus,
+    required RedactionStatus canceledStatus,
+    required RedactionStatus Function(RedactionState snapshot) successStatus,
     String Function(RedactionState snapshot)? fileName,
     List<RedactionRegion> Function(RedactionState snapshot)?
     redactionsForExport,
@@ -687,9 +760,9 @@ class RedactionController extends _$RedactionController {
   }) async {
     final snapshot = state;
     final image = snapshot.image;
-    if (image == null || snapshot.isExporting) return;
+    if (image == null || snapshot.isExporting || snapshot.isCropping) return;
 
-    state = state.copyWith(isExporting: true, status: progressStatus);
+    state = state.copyWith(isExporting: true, statusMessage: progressStatus);
 
     try {
       final exportRedactions =
@@ -711,14 +784,22 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       state = state.copyWith(
-        status: result == null ? canceledStatus : successStatus(snapshot),
+        statusMessage: result == null
+            ? canceledStatus
+            : successStatus(snapshot),
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: error.message ?? 'Could not export image');
+      state = state.copyWith(
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotExportImage()
+            : RedactionStatus.externalMessage(error.message!),
+      );
     } catch (_) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: 'Could not export image');
+      state = state.copyWith(
+        statusMessage: RedactionStatus.couldNotExportImage(),
+      );
     } finally {
       if (ref.mounted) {
         state = state.copyWith(isExporting: false);
@@ -727,9 +808,9 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> _exportCleanPdf({
-    required String progressStatus,
-    required String canceledStatus,
-    required String Function(RedactionState snapshot) successStatus,
+    required RedactionStatus progressStatus,
+    required RedactionStatus canceledStatus,
+    required RedactionStatus Function(RedactionState snapshot) successStatus,
     required String Function(RedactionState snapshot) fileName,
     required Map<int, List<RedactionRegion>> Function(RedactionState snapshot)
     redactionsForExport,
@@ -738,7 +819,7 @@ class RedactionController extends _$RedactionController {
     final document = _pdfDocument;
     if (document == null || !snapshot.hasPdf || snapshot.isExporting) return;
 
-    state = state.copyWith(isExporting: true, status: progressStatus);
+    state = state.copyWith(isExporting: true, statusMessage: progressStatus);
 
     try {
       final bytes = await _renderCleanPdf(
@@ -748,7 +829,10 @@ class RedactionController extends _$RedactionController {
         onPage: (pageNumber, pageCount) {
           if (!ref.mounted) return;
           state = state.copyWith(
-            status: 'Flattening PDF page $pageNumber of $pageCount',
+            statusMessage: RedactionStatus.flatteningPdfPage(
+              pageNumber: pageNumber,
+              pageCount: pageCount,
+            ),
           );
         },
       );
@@ -760,15 +844,21 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       state = state.copyWith(
-        status: result == null ? canceledStatus : successStatus(snapshot),
+        statusMessage: result == null
+            ? canceledStatus
+            : successStatus(snapshot),
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(status: error.message ?? 'Could not export PDF');
+      state = state.copyWith(
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotExportPdf()
+            : RedactionStatus.externalMessage(error.message!),
+      );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: 'Could not export PDF: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotExportPdf(_friendlyError(error)),
       );
     } finally {
       if (ref.mounted) {
@@ -778,8 +868,8 @@ class RedactionController extends _$RedactionController {
   }
 
   Future<void> _chooseMetadataInput({
-    required String choosingStatus,
-    required String emptyStatus,
+    required RedactionStatus choosingStatus,
+    required RedactionStatus emptyStatus,
     required Future<_MetadataInputSelection?> Function(
       FileChannelService service,
     )
@@ -787,7 +877,7 @@ class RedactionController extends _$RedactionController {
   }) async {
     if (state.isOpening || state.isExporting) return;
 
-    state = state.copyWith(isOpening: true, status: choosingStatus);
+    state = state.copyWith(isOpening: true, statusMessage: choosingStatus);
 
     try {
       final service = ref.read(fileChannelServiceProvider);
@@ -795,12 +885,12 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
 
       if (selection == null) {
-        state = state.copyWith(isOpening: false, status: emptyStatus);
+        state = state.copyWith(isOpening: false, statusMessage: emptyStatus);
         return;
       }
 
       if (selection.isEmpty) {
-        state = state.copyWith(isOpening: false, status: emptyStatus);
+        state = state.copyWith(isOpening: false, statusMessage: emptyStatus);
         return;
       }
 
@@ -809,7 +899,7 @@ class RedactionController extends _$RedactionController {
       var nextState = _stateWithMetadataInput(
         state,
         selection,
-        status: 'Selected ${selection.inputLabel}',
+        status: RedactionStatus.selectedMetadataInput(selection.inputSummary),
       );
       nextState = await _stateWithPreviewedMetadataOutput(
         nextState,
@@ -823,13 +913,15 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
       state = state.copyWith(
         isOpening: false,
-        status: error.message ?? 'Could not choose metadata input',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotChooseMetadataInput()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (_) {
       if (!ref.mounted) return;
       state = state.copyWith(
         isOpening: false,
-        status: 'Could not choose metadata input',
+        statusMessage: RedactionStatus.couldNotChooseMetadataInput(),
       );
     }
   }
@@ -839,7 +931,9 @@ class RedactionController extends _$RedactionController {
 
     final selection = _metadataInputSelection;
     if (selection == null || selection.isEmpty) {
-      state = state.copyWith(status: 'Choose metadata input first');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.chooseMetadataInputFirst(),
+      );
       return;
     }
 
@@ -850,11 +944,13 @@ class RedactionController extends _$RedactionController {
     state = state.copyWith(
       isExporting: true,
       metadataCleanProgress: 0,
-      status: 'Starting metadata clean',
+      statusMessage: const RedactionStatus.startingMetadataClean(),
     );
 
     try {
-      state = state.copyWith(status: 'Preparing output folder');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.preparingOutputFolder(),
+      );
       final destination = await service.createMetadataCleanDestination(
         images: selection.images,
         automaticFolderName: output.automaticFolderName,
@@ -894,7 +990,11 @@ class RedactionController extends _$RedactionController {
         final imageLabel = _metadataInputName(image, index);
         state = state.copyWith(
           metadataCleanProgress: processedCount / totalCount,
-          status: 'Cleaning $imageLabel (${processedCount + 1}/$totalCount)',
+          statusMessage: RedactionStatus.cleaningMetadataItem(
+            label: imageLabel,
+            current: processedCount + 1,
+            total: totalCount,
+          ),
         );
 
         try {
@@ -937,7 +1037,11 @@ class RedactionController extends _$RedactionController {
         final pdfLabel = _metadataPdfInputName(pdf, index);
         state = state.copyWith(
           metadataCleanProgress: processedCount / totalCount,
-          status: 'Cleaning $pdfLabel (${processedCount + 1}/$totalCount)',
+          statusMessage: RedactionStatus.cleaningMetadataItem(
+            label: pdfLabel,
+            current: processedCount + 1,
+            total: totalCount,
+          ),
         );
 
         PdfDocumentHandle? document;
@@ -951,8 +1055,13 @@ class RedactionController extends _$RedactionController {
             onPage: (pageNumber, pageCount) {
               if (!ref.mounted) return;
               state = state.copyWith(
-                status:
-                    'Cleaning $pdfLabel page $pageNumber of $pageCount (${processedCount + 1}/$totalCount)',
+                statusMessage: RedactionStatus.cleaningMetadataPdfPage(
+                  label: pdfLabel,
+                  pageNumber: pageNumber,
+                  pageCount: pageCount,
+                  current: processedCount + 1,
+                  total: totalCount,
+                ),
               );
             },
           );
@@ -985,7 +1094,7 @@ class RedactionController extends _$RedactionController {
       }
 
       if (!ref.mounted) return;
-      final status = _metadataCleanBatchStatus(
+      final status = RedactionStatus.metadataBatchResult(
         savedCount: savedCount,
         failedCount: failedCount,
         ignoredCount: selection.ignoredCount,
@@ -1018,20 +1127,21 @@ class RedactionController extends _$RedactionController {
             ? null
             : state.metadataInputDescription,
         metadataCleanProgress: null,
-        status: status,
+        statusMessage: status,
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
         metadataCleanProgress: null,
-        status:
-            'Could not clean metadata: ${error.message ?? 'Platform error'}',
+        statusMessage: RedactionStatus.couldNotCleanMetadata(
+          error.message ?? 'Platform error',
+        ),
       );
     } on FileSystemException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
         metadataCleanProgress: null,
-        status: _metadataOutputFileSystemStatus(
+        statusMessage: _metadataOutputFileSystemStatus(
           error: error,
           automaticOutput: selection.selectedDestination == null,
           outputPath: output.directoryPath,
@@ -1041,7 +1151,9 @@ class RedactionController extends _$RedactionController {
       if (!ref.mounted) return;
       state = state.copyWith(
         metadataCleanProgress: null,
-        status: 'Could not clean metadata: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotCleanMetadata(
+          _friendlyError(error),
+        ),
       );
     } finally {
       if (ref.mounted) {
@@ -1055,12 +1167,14 @@ class RedactionController extends _$RedactionController {
 
     final selection = _metadataInputSelection;
     if (selection == null || selection.isEmpty) {
-      state = state.copyWith(status: 'Choose metadata input first');
+      state = state.copyWith(
+        statusMessage: const RedactionStatus.chooseMetadataInputFirst(),
+      );
       return;
     }
     if (!selection.canSaveImagesToPhotos) {
       state = state.copyWith(
-        status: 'Photos output is available for image files only',
+        statusMessage: const RedactionStatus.photosOutputImagesOnly(),
       );
       return;
     }
@@ -1073,7 +1187,7 @@ class RedactionController extends _$RedactionController {
       metadataCleanProgress: 0,
       metadataOutputDirectoryPath: null,
       metadataOutputDirectoryDisplayName: 'Photos',
-      status: 'Starting metadata clean to Photos',
+      statusMessage: const RedactionStatus.startingMetadataCleanToPhotos(),
     );
 
     try {
@@ -1093,8 +1207,11 @@ class RedactionController extends _$RedactionController {
         final imageLabel = _metadataInputName(image, index);
         state = state.copyWith(
           metadataCleanProgress: processedCount / totalCount,
-          status:
-              'Saving $imageLabel to Photos (${processedCount + 1}/$totalCount)',
+          statusMessage: RedactionStatus.savingMetadataItemToPhotos(
+            label: imageLabel,
+            current: processedCount + 1,
+            total: totalCount,
+          ),
         );
 
         try {
@@ -1131,7 +1248,7 @@ class RedactionController extends _$RedactionController {
       }
 
       if (!ref.mounted) return;
-      final status = _metadataCleanBatchStatus(
+      final status = RedactionStatus.metadataBatchResult(
         savedCount: savedCount,
         failedCount: failedCount,
         ignoredCount: selection.ignoredCount,
@@ -1166,20 +1283,23 @@ class RedactionController extends _$RedactionController {
             ? null
             : 'Photos',
         metadataCleanProgress: null,
-        status: status,
+        statusMessage: status,
       );
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
         metadataCleanProgress: null,
-        status:
-            'Could not clean metadata: ${error.message ?? 'Platform error'}',
+        statusMessage: RedactionStatus.couldNotCleanMetadata(
+          error.message ?? 'Platform error',
+        ),
       );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
         metadataCleanProgress: null,
-        status: 'Could not clean metadata: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotCleanMetadata(
+          _friendlyError(error),
+        ),
       );
     } finally {
       if (ref.mounted) {
@@ -1400,7 +1520,7 @@ class RedactionController extends _$RedactionController {
     finishPdfRedaction();
     state = state.copyWith(
       isOpening: true,
-      status: 'Rendering PDF page $pageNumber',
+      statusMessage: RedactionStatus.renderingPdfPage(pageNumber),
     );
 
     ui.Image? pageImage;
@@ -1423,18 +1543,25 @@ class RedactionController extends _$RedactionController {
         draftRect: null,
         draftStart: null,
         draftColor: null,
-        status: 'PDF page $pageNumber of ${document.pagesCount}',
+        statusMessage: RedactionStatus.pdfPage(
+          pageNumber: pageNumber,
+          pageCount: document.pagesCount,
+        ),
       );
       previousPageImage?.dispose();
     } on PlatformException catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: error.message ?? 'Could not render PDF page',
+        statusMessage: error.message == null
+            ? RedactionStatus.couldNotRenderPdfPage()
+            : RedactionStatus.externalMessage(error.message!),
       );
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(
-        status: 'Could not render PDF page: ${_friendlyError(error)}',
+        statusMessage: RedactionStatus.couldNotRenderPdfPage(
+          _friendlyError(error),
+        ),
       );
     } finally {
       pageImage?.dispose();
@@ -1495,19 +1622,124 @@ class RedactionController extends _$RedactionController {
     state = state.copyWith(preservePdfExportFileName: preserve);
   }
 
+  void startCrop() {
+    final image = state.image;
+    if (image == null || state.isOpening || state.isExporting) return;
+
+    finishRedaction();
+
+    final width = image.width.toDouble();
+    final height = image.height.toDouble();
+    final insetX = width <= 32 ? 0.0 : math.min(width * 0.08, width / 4);
+    final insetY = height <= 32 ? 0.0 : math.min(height * 0.08, height / 4);
+    final crop = _clampCropRect(
+      Rect.fromLTRB(insetX, insetY, width - insetX, height - insetY),
+      image,
+    );
+
+    state = state.copyWith(
+      cropRect: crop,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.adjustingCrop(),
+    );
+  }
+
+  void updateCrop(Rect rect) {
+    final image = state.image;
+    if (image == null || !state.isCropping) return;
+
+    state = state.copyWith(cropRect: _clampCropRect(rect, image));
+  }
+
+  void cancelCrop() {
+    if (!state.isCropping) return;
+
+    state = state.copyWith(
+      cropRect: null,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.cropCanceled(),
+    );
+  }
+
+  Future<void> applyCrop() async {
+    final image = state.image;
+    final crop = state.cropRect;
+    if (image == null || crop == null || state.isOpening || state.isExporting) {
+      return;
+    }
+
+    final source = _clampCropRect(crop, image);
+    final width = math.max(1, source.width.round());
+    final height = math.max(1, source.height.round());
+    ui.Image? croppedImage;
+
+    state = state.copyWith(
+      isOpening: true,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.croppingImage(),
+    );
+
+    try {
+      croppedImage = await _cropImage(
+        image: image,
+        sourceRect: source,
+        width: width,
+        height: height,
+      );
+      if (!ref.mounted) {
+        croppedImage.dispose();
+        croppedImage = null;
+        return;
+      }
+
+      final previous = _ownedImage;
+      final redactions = _redactionsForCrop(state.redactions, source);
+      _ownedImage = croppedImage;
+      croppedImage = null;
+
+      state = state.copyWith(
+        image: _ownedImage,
+        redactions: redactions,
+        cropRect: null,
+        statusMessage: RedactionStatus.imageCropped(
+          width: width,
+          height: height,
+        ),
+      );
+      previous?.dispose();
+    } catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        statusMessage: RedactionStatus.couldNotOpenImage(_friendlyError(error)),
+      );
+    } finally {
+      croppedImage?.dispose();
+      if (ref.mounted) {
+        state = state.copyWith(isOpening: false);
+      }
+    }
+  }
+
   void undo() {
-    if (state.redactions.isEmpty) return;
+    if (state.isCropping || state.redactions.isEmpty) return;
 
     final redactions = state.redactions.toList()..removeLast();
     state = state.copyWith(
       redactions: redactions,
-      status: redactions.isEmpty
-          ? 'Redactions cleared'
-          : '${redactions.length} redaction${redactions.length == 1 ? '' : 's'}',
+      statusMessage: redactions.isEmpty
+          ? const RedactionStatus.redactionsCleared()
+          : RedactionStatus.redactionCountReady(redactions.length),
     );
   }
 
   void clear() {
+    if (state.isCropping) return;
     if (state.redactions.isEmpty && state.draftRect == null) return;
 
     state = state.copyWith(
@@ -1515,7 +1747,7 @@ class RedactionController extends _$RedactionController {
       draftRect: null,
       draftStart: null,
       draftColor: null,
-      status: 'Redactions cleared',
+      statusMessage: const RedactionStatus.redactionsCleared(),
     );
   }
 
@@ -1530,9 +1762,12 @@ class RedactionController extends _$RedactionController {
         state.pdfCurrentPage,
         redactions,
       ),
-      status: redactions.isEmpty
-          ? 'PDF page redactions cleared'
-          : 'PDF page ${state.pdfCurrentPage}: ${redactions.length} redaction${redactions.length == 1 ? '' : 's'}',
+      statusMessage: redactions.isEmpty
+          ? const RedactionStatus.pdfPageRedactionsCleared()
+          : RedactionStatus.pdfRedactionCountReady(
+              pageNumber: state.pdfCurrentPage,
+              count: redactions.length,
+            ),
     );
   }
 
@@ -1548,7 +1783,7 @@ class RedactionController extends _$RedactionController {
       draftRect: null,
       draftStart: null,
       draftColor: null,
-      status: 'PDF page redactions cleared',
+      statusMessage: const RedactionStatus.pdfPageRedactionsCleared(),
     );
   }
 
@@ -1567,7 +1802,11 @@ class RedactionController extends _$RedactionController {
     Offset localPosition,
     Rect imageRect,
   ) {
-    if (image == null || !imageRect.contains(localPosition)) return;
+    if (image == null ||
+        state.isCropping ||
+        !imageRect.contains(localPosition)) {
+      return;
+    }
 
     final point = _toImagePoint(localPosition, imageRect, image);
     state = state.copyWith(
@@ -1610,12 +1849,11 @@ class RedactionController extends _$RedactionController {
 
     final normalized = _normalizeRect(draft);
     final redactions = state.redactions.toList();
-    var status = state.status;
+    var status = state.statusMessage;
 
     if (normalized.width >= 3 && normalized.height >= 3) {
       redactions.add(RedactionRegion(rect: normalized, color: color));
-      status =
-          '${redactions.length} redaction${redactions.length == 1 ? '' : 's'} ready';
+      status = RedactionStatus.redactionCountReady(redactions.length);
     }
 
     state = state.copyWith(
@@ -1623,7 +1861,7 @@ class RedactionController extends _$RedactionController {
       draftRect: null,
       draftStart: null,
       draftColor: null,
-      status: status,
+      statusMessage: status,
     );
   }
 
@@ -1634,12 +1872,14 @@ class RedactionController extends _$RedactionController {
 
     final normalized = _normalizeRect(draft);
     final redactions = state.currentPdfRedactions.toList();
-    var status = state.status;
+    var status = state.statusMessage;
 
     if (normalized.width >= 3 && normalized.height >= 3) {
       redactions.add(RedactionRegion(rect: normalized, color: color));
-      status =
-          'PDF page ${state.pdfCurrentPage}: ${redactions.length} redaction${redactions.length == 1 ? '' : 's'} ready';
+      status = RedactionStatus.pdfRedactionCountReady(
+        pageNumber: state.pdfCurrentPage,
+        count: redactions.length,
+      );
     }
 
     state = state.copyWith(
@@ -1651,7 +1891,7 @@ class RedactionController extends _$RedactionController {
       draftRect: null,
       draftStart: null,
       draftColor: null,
-      status: status,
+      statusMessage: status,
     );
   }
 
@@ -1672,6 +1912,89 @@ class RedactionController extends _$RedactionController {
       math.max(rect.left, rect.right),
       math.max(rect.top, rect.bottom),
     );
+  }
+
+  Rect _clampCropRect(Rect rect, ui.Image image) {
+    final imageWidth = math.max(1.0, image.width.toDouble());
+    final imageHeight = math.max(1.0, image.height.toDouble());
+    final minSize = math.min(12.0, math.min(imageWidth, imageHeight));
+    final normalized = _normalizeRect(rect);
+
+    var left = normalized.left.clamp(0.0, imageWidth).toDouble();
+    var right = normalized.right.clamp(0.0, imageWidth).toDouble();
+    var top = normalized.top.clamp(0.0, imageHeight).toDouble();
+    var bottom = normalized.bottom.clamp(0.0, imageHeight).toDouble();
+
+    if (right - left < minSize) {
+      final centerX = ((left + right) / 2).clamp(0.0, imageWidth).toDouble();
+      left = (centerX - minSize / 2)
+          .clamp(0.0, math.max(0.0, imageWidth - minSize))
+          .toDouble();
+      right = math.min(imageWidth, left + minSize);
+    }
+
+    if (bottom - top < minSize) {
+      final centerY = ((top + bottom) / 2).clamp(0.0, imageHeight).toDouble();
+      top = (centerY - minSize / 2)
+          .clamp(0.0, math.max(0.0, imageHeight - minSize))
+          .toDouble();
+      bottom = math.min(imageHeight, top + minSize);
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Future<ui.Image> _cropImage({
+    required ui.Image image,
+    required Rect sourceRect,
+    required int width,
+    required int height,
+  }) async {
+    ui.Picture? picture;
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawImageRect(
+        image,
+        sourceRect,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..filterQuality = FilterQuality.high,
+      );
+      picture = recorder.endRecording();
+      return await picture.toImage(width, height);
+    } finally {
+      picture?.dispose();
+    }
+  }
+
+  List<RedactionRegion> _redactionsForCrop(
+    List<RedactionRegion> redactions,
+    Rect crop,
+  ) {
+    if (redactions.isEmpty) return redactions;
+
+    final next = <RedactionRegion>[];
+    for (final redaction in redactions) {
+      final rect = _normalizeRect(redaction.rect);
+      final left = math.max(rect.left, crop.left);
+      final top = math.max(rect.top, crop.top);
+      final right = math.min(rect.right, crop.right);
+      final bottom = math.min(rect.bottom, crop.bottom);
+      if (right - left < 3 || bottom - top < 3) continue;
+
+      next.add(
+        RedactionRegion(
+          rect: Rect.fromLTRB(
+            left - crop.left,
+            top - crop.top,
+            right - crop.left,
+            bottom - crop.top,
+          ),
+          color: redaction.color,
+        ),
+      );
+    }
+    return next;
   }
 }
 
@@ -1768,24 +2091,24 @@ _MetadataInputSelection? _pickedMetadataFilesInput(MetadataPickedInput input) {
 RedactionState _stateWithMetadataInput(
   RedactionState state,
   _MetadataInputSelection selection, {
-  String? status,
+  RedactionStatus? status,
 }) {
   final output = selection.outputFor(state.exportFormat);
   return state.copyWith(
     metadataInputCount: selection.totalCount,
     metadataHasImages: selection.images.isNotEmpty,
     metadataHasPdfs: selection.pdfs.isNotEmpty,
-    metadataInputLabel: selection.inputLabel,
-    metadataInputDescription: selection.inputDescription,
+    metadataInputLabel: selection.inputSummary.fallbackLabel,
+    metadataInputDescription: selection.inputDescription.fallbackLabel,
     metadataOutputDirectoryPath: output.directoryPath,
     metadataOutputDirectoryDisplayName: output.displayName,
-    status: status ?? state.status,
+    statusMessage: status ?? state.statusMessage,
   );
 }
 
 RedactionState _stateWithoutMetadataInput(
   RedactionState state, {
-  String? status,
+  RedactionStatus? status,
 }) {
   return state.copyWith(
     metadataInputCount: 0,
@@ -1796,7 +2119,7 @@ RedactionState _stateWithoutMetadataInput(
     metadataOutputDirectoryPath: null,
     metadataOutputDirectoryDisplayName: null,
     metadataCleanProgress: null,
-    status: status ?? state.status,
+    statusMessage: status ?? state.statusMessage,
   );
 }
 
@@ -1819,25 +2142,12 @@ Future<RedactionState> _stateWithPreviewedMetadataOutput(
   );
 }
 
-enum MetadataInputDisplayKind { image, pdf, folder }
-
-class MetadataInputDisplayItem {
-  const MetadataInputDisplayItem({
-    required this.kind,
-    required this.label,
-    required this.detail,
-  });
-
-  final MetadataInputDisplayKind kind;
-  final String label;
-  final String detail;
-}
-
 class _MetadataInputSource {
   const _MetadataInputSource._({
     required this.kind,
     required this.displayLabel,
     required this.displayDetail,
+    required this.summary,
     required this.identityKey,
     required this.images,
     required this.pdfs,
@@ -1858,7 +2168,14 @@ class _MetadataInputSource {
     return _MetadataInputSource._(
       kind: MetadataInputDisplayKind.image,
       displayLabel: sourceName,
-      displayDetail: image.sourcePath ?? (photo ? 'Photo library' : 'Image'),
+      displayDetail: image.sourcePath == null
+          ? photo
+                ? const MetadataInputDetail.photoLibrary()
+                : const MetadataInputDetail.image()
+          : MetadataInputDetail.path(image.sourcePath!),
+      summary: photo
+          ? MetadataInputSummary.photos(1)
+          : MetadataInputSummary.images(1),
       identityKey: 'image:${image.sourcePath ?? sourceName}',
       images: <MetadataInputImage>[image],
       pdfs: const <MetadataInputPdf>[],
@@ -1873,7 +2190,10 @@ class _MetadataInputSource {
     return _MetadataInputSource._(
       kind: MetadataInputDisplayKind.pdf,
       displayLabel: sourceName,
-      displayDetail: pdf.sourcePath ?? 'PDF',
+      displayDetail: pdf.sourcePath == null
+          ? const MetadataInputDetail.pdf()
+          : MetadataInputDetail.path(pdf.sourcePath!),
+      summary: MetadataInputSummary.pdfs(1),
       identityKey: 'pdf:${pdf.sourcePath ?? sourceName}',
       images: const <MetadataInputImage>[],
       pdfs: <MetadataInputPdf>[pdf],
@@ -1888,6 +2208,7 @@ class _MetadataInputSource {
       kind: MetadataInputDisplayKind.folder,
       displayLabel: folderName,
       displayDetail: _folderInputDescription(folder),
+      summary: MetadataInputSummary.folder(folderName),
       identityKey: 'folder:${folder.directoryPath}',
       images: folder.images,
       pdfs: folder.pdfs,
@@ -1901,7 +2222,8 @@ class _MetadataInputSource {
 
   final MetadataInputDisplayKind kind;
   final String displayLabel;
-  final String displayDetail;
+  final MetadataInputDetail displayDetail;
+  final MetadataInputSummary summary;
   final String identityKey;
   final List<MetadataInputImage> images;
   final List<MetadataInputPdf> pdfs;
@@ -1914,9 +2236,7 @@ class _MetadataInputSource {
 
   MetadataInputDisplayItem get displayItem => MetadataInputDisplayItem(
     kind: kind,
-    label: kind == MetadataInputDisplayKind.folder
-        ? 'Folder: $displayLabel'
-        : displayLabel,
+    label: displayLabel,
     detail: displayDetail,
   );
 
@@ -1939,7 +2259,7 @@ class _MetadataInputSelection {
     required this.sources,
     required this.images,
     required this.pdfs,
-    required this.inputLabel,
+    required this.inputSummary,
     required this.inputDescription,
     this.singleOutputBaseName,
     this.singleOutputExtension,
@@ -1969,7 +2289,7 @@ class _MetadataInputSelection {
     final singleSource = normalizedSources.length == 1
         ? normalizedSources.single
         : null;
-    final sourceLabel = _metadataSourceSelectionLabel(
+    final sourceSummary = _metadataSourceSelectionSummary(
       sources: normalizedSources,
       images: images,
       pdfs: pdfs,
@@ -1985,7 +2305,7 @@ class _MetadataInputSelection {
       sources: normalizedSources,
       images: images,
       pdfs: pdfs,
-      inputLabel: sourceLabel,
+      inputSummary: sourceSummary,
       inputDescription: sourceDescription,
       singleOutputBaseName: singleSource?.singleOutputBaseName,
       singleOutputExtension: singleSource?.singleOutputExtension,
@@ -1998,8 +2318,8 @@ class _MetadataInputSelection {
   final List<_MetadataInputSource> sources;
   final List<MetadataInputImage> images;
   final List<MetadataInputPdf> pdfs;
-  final String inputLabel;
-  final String inputDescription;
+  final MetadataInputSummary inputSummary;
+  final MetadataInputDetail inputDescription;
   final String? singleOutputBaseName;
   final String? singleOutputExtension;
   final String? automaticOutputSubfolderName;
@@ -2110,34 +2430,30 @@ int _sourceIgnoredCount(List<_MetadataInputSource> sources) {
   return sources.fold<int>(0, (total, source) => total + source.ignoredCount);
 }
 
-String _metadataSourceSelectionLabel({
+MetadataInputSummary _metadataSourceSelectionSummary({
   required List<_MetadataInputSource> sources,
   required List<MetadataInputImage> images,
   required List<MetadataInputPdf> pdfs,
 }) {
   if (sources.length == 1) {
-    final source = sources.single;
-    return switch (source.kind) {
-      MetadataInputDisplayKind.folder => 'Folder: ${source.displayLabel}',
-      MetadataInputDisplayKind.image => source.photo ? '1 photo' : '1 image',
-      MetadataInputDisplayKind.pdf => '1 PDF',
-    };
+    return sources.single.summary;
   }
 
   final imageCount = images.length;
   final pdfCount = pdfs.length;
   if (pdfCount == 0) {
     final allPhotos = sources.every((source) => source.photo);
-    final noun = allPhotos ? 'photo' : 'image';
-    return '$imageCount $noun${imageCount == 1 ? '' : 's'}';
+    return allPhotos
+        ? MetadataInputSummary.photos(imageCount)
+        : MetadataInputSummary.images(imageCount);
   }
-  if (imageCount == 0) return '$pdfCount PDF${pdfCount == 1 ? '' : 's'}';
+  if (imageCount == 0) return MetadataInputSummary.pdfs(pdfCount);
 
   final fileCount = imageCount + pdfCount;
-  return '$fileCount file${fileCount == 1 ? '' : 's'}';
+  return MetadataInputSummary.files(fileCount);
 }
 
-String _metadataSourceSelectionDescription({
+MetadataInputDetail _metadataSourceSelectionDescription({
   required List<_MetadataInputSource> sources,
   required List<MetadataInputImage> images,
   required List<MetadataInputPdf> pdfs,
@@ -2145,17 +2461,11 @@ String _metadataSourceSelectionDescription({
 }) {
   if (sources.length == 1) return sources.single.displayDetail;
 
-  if (pdfs.isEmpty && ignoredCount == 0) return _inputPreview(images);
-  if (images.isEmpty && ignoredCount == 0) return _pdfInputPreview(pdfs);
-
-  final imageCount = images.length;
-  final pdfCount = pdfs.length;
-  final parts = <String>[
-    if (imageCount > 0) '$imageCount image${imageCount == 1 ? '' : 's'}',
-    if (pdfCount > 0) '$pdfCount PDF${pdfCount == 1 ? '' : 's'}',
-    if (ignoredCount > 0) '$ignoredCount ignored',
-  ];
-  return parts.join(', ');
+  return MetadataInputDetail.contents(
+    imageCount: images.length,
+    pdfCount: pdfs.length,
+    ignoredCount: ignoredCount,
+  );
 }
 
 class _MetadataResolvedOutput {
@@ -2274,52 +2584,33 @@ String _metadataCleanBatchFileName({
   );
 }
 
-String _metadataCleanBatchStatus({
-  required int savedCount,
-  required int failedCount,
-  required int ignoredCount,
-  required String destinationName,
-  required String? firstFailure,
-}) {
-  final details = <String>[
-    if (ignoredCount > 0) '$ignoredCount ignored',
-    if (failedCount > 0 && savedCount == 0) '$failedCount failed',
-    if (failedCount > 0 && savedCount > 0)
-      firstFailure == null
-          ? '$failedCount failed'
-          : '$failedCount failed: $firstFailure',
-  ];
-  final detailText = details.isEmpty ? '' : ' (${details.join(', ')})';
-
-  if (savedCount == 0) {
-    return firstFailure == null
-        ? 'Could not clean metadata for selected files$detailText'
-        : 'Could not clean metadata: $firstFailure$detailText';
-  }
-
-  final fileLabel = savedCount == 1 ? 'file' : 'files';
-  if (failedCount == 0) {
-    return 'Success: cleaned metadata for $savedCount $fileLabel to $destinationName$detailText';
-  }
-
-  return 'Cleaned metadata for $savedCount $fileLabel to $destinationName$detailText';
-}
-
-String _metadataOutputFileSystemStatus({
+RedactionStatus _metadataOutputFileSystemStatus({
   required FileSystemException error,
   required bool automaticOutput,
   required String? outputPath,
 }) {
   final path = outputPath ?? error.path;
   if (automaticOutput && path != null) {
-    return 'Could not create output folder: macOS sandbox did not allow the planned output location. Use Output > Choose Folder and select or create $path.';
+    return RedactionStatus.couldNotCreateOutputFolder(
+      fallbackMessage:
+          'Could not create output folder: macOS sandbox did not allow the planned output location. Use Output > Choose Folder and select or create $path.',
+      path: path,
+      automaticOutputFailure: true,
+    );
   }
 
   if (path != null) {
-    return 'Could not create output folder: $path. Choose another output folder.';
+    return RedactionStatus.couldNotCreateOutputFolder(
+      fallbackMessage:
+          'Could not create output folder: $path. Choose another output folder.',
+      path: path,
+    );
   }
 
-  return 'Could not create output folder. Choose another output folder.';
+  return RedactionStatus.couldNotCreateOutputFolder(
+    fallbackMessage:
+        'Could not create output folder. Choose another output folder.',
+  );
 }
 
 String _metadataInputName(MetadataInputImage image, int index) {
@@ -2384,43 +2675,12 @@ bool _hasJpegSignature(Uint8List bytes) {
   return bytes.length >= 2 && bytes[0] == 0xff && bytes[1] == 0xd8;
 }
 
-String _inputPreview(List<MetadataInputImage> images) {
-  final names = images
-      .map(
-        (image) =>
-            image.sourceName ?? _lastPathComponent(image.sourcePath ?? ''),
-      )
-      .where((name) => name.isNotEmpty)
-      .take(2)
-      .toList();
-  if (names.isEmpty) return '${images.length} selected';
-  if (images.length <= names.length) return names.join(', ');
-  return '${names.join(', ')} and ${images.length - names.length} more';
-}
-
-String _pdfInputPreview(List<MetadataInputPdf> pdfs) {
-  final names = pdfs
-      .map((pdf) => pdf.sourceName ?? _lastPathComponent(pdf.sourcePath ?? ''))
-      .where((name) => name.isNotEmpty)
-      .take(2)
-      .toList();
-  if (names.isEmpty) return '${pdfs.length} selected';
-  if (pdfs.length <= names.length) return names.join(', ');
-  return '${names.join(', ')} and ${pdfs.length - names.length} more';
-}
-
-String _folderInputDescription(MetadataPickedFolder folder) {
-  final imageCount = folder.images.length;
-  final pdfCount = folder.pdfs.length;
-  final imageLabel = imageCount == 1 ? 'image' : 'images';
-  final pdfLabel = pdfCount == 1 ? 'PDF' : 'PDFs';
-  final parts = <String>[
-    if (imageCount > 0) '$imageCount $imageLabel',
-    if (pdfCount > 0) '$pdfCount $pdfLabel',
-    if (folder.ignoredCount > 0) '${folder.ignoredCount} ignored',
-  ];
-
-  return parts.isEmpty ? 'No supported files' : parts.join(', ');
+MetadataInputDetail _folderInputDescription(MetadataPickedFolder folder) {
+  return MetadataInputDetail.contents(
+    imageCount: folder.images.length,
+    pdfCount: folder.pdfs.length,
+    ignoredCount: folder.ignoredCount,
+  );
 }
 
 String _lastPathComponent(String path) {

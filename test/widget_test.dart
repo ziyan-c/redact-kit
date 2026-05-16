@@ -1107,6 +1107,61 @@ void main() {
     expect(service.savedName, 'source-secret.jpg');
   });
 
+  testWidgets('image crop bakes pixels and shifts redactions', (
+    WidgetTester tester,
+  ) async {
+    final source = image_lib.Image(width: 80, height: 60);
+    for (var y = 0; y < source.height; y++) {
+      for (var x = 0; x < source.width; x++) {
+        source.setPixelRgb(x, y, x * 3, y * 4, 220);
+      }
+    }
+
+    final service = _FakeFileChannelService(
+      openBytes: Uint8List.fromList(image_lib.encodePng(source)),
+    );
+    final container = ProviderContainer(
+      overrides: [fileChannelServiceProvider.overrideWithValue(service)],
+    );
+    final subscription = container.listen(
+      redactionControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+    });
+
+    final controller = container.read(redactionControllerProvider.notifier);
+    await tester.runAsync(() async {
+      await controller.openImage();
+      controller.beginRedaction(
+        const Offset(20, 15),
+        const Rect.fromLTWH(0, 0, 80, 60),
+      );
+      controller.updateRedaction(
+        const Offset(70, 50),
+        const Rect.fromLTWH(0, 0, 80, 60),
+      );
+      controller.finishRedaction();
+      controller.startCrop();
+      controller.updateCrop(const Rect.fromLTWH(10, 10, 40, 30));
+      await controller.applyCrop();
+    });
+
+    final croppedState = container.read(redactionControllerProvider);
+    expect(croppedState.image?.width, 40);
+    expect(croppedState.image?.height, 30);
+    expect(croppedState.cropRect, isNull);
+    expect(croppedState.redactions, hasLength(1));
+
+    final redaction = croppedState.redactions.single.rect;
+    expect(redaction.left, closeTo(10, 0.01));
+    expect(redaction.top, closeTo(5, 0.01));
+    expect(redaction.right, closeTo(40, 0.01));
+    expect(redaction.bottom, closeTo(30, 0.01));
+  });
+
   testWidgets('PDF export flattens pages through the PDF service', (
     WidgetTester tester,
   ) async {

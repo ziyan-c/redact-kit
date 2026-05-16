@@ -9,6 +9,47 @@ part of 'file_channel_service.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 
+@ProviderFor(fileDialogText)
+final fileDialogTextProvider = FileDialogTextProvider._();
+
+final class FileDialogTextProvider
+    extends $FunctionalProvider<FileDialogText, FileDialogText, FileDialogText>
+    with $Provider<FileDialogText> {
+  FileDialogTextProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'fileDialogTextProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$fileDialogTextHash();
+
+  @$internal
+  @override
+  $ProviderElement<FileDialogText> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  FileDialogText create(Ref ref) {
+    return fileDialogText(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(FileDialogText value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<FileDialogText>(value),
+    );
+  }
+}
+
+String _$fileDialogTextHash() => r'e15a8924eed383abe68e0b6745bd497ea871d612';
+
 @ProviderFor(fileChannelService)
 final fileChannelServiceProvider = FileChannelServiceProvider._();
 
@@ -55,4 +96,4 @@ final class FileChannelServiceProvider
 }
 
 String _$fileChannelServiceHash() =>
-    r'4889531b9b48cf2c905b094ae99f394e7de3c39a';
+    r'a4a379d9e1258281f0b3fb05355159162187be2e';

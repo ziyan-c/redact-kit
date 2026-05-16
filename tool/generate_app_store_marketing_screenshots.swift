@@ -10,6 +10,14 @@ struct Slide {
     let title: String
     let subtitle: String
     let accent: NSColor
+    let accentHighlight: NSColor
+}
+
+struct LanguageSet {
+    let name: String
+    let sourceSubdirectory: String?
+    let outputSubdirectory: String?
+    let slides: [Slide]
 }
 
 struct TargetSet {
@@ -37,14 +45,15 @@ let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let sourceRoot = root.appendingPathComponent("app_store_assets/app_store_connect_screenshots")
 let outputRoot = root.appendingPathComponent("app_store_assets/app_store_marketing_screenshots")
 
-let slides = [
+let englishSlides = [
     Slide(
         sourceName: "01.png",
         fileName: "01_redact_private_details.png",
         eyebrow: "Image",
         title: "Redact private details",
         subtitle: "Cover sensitive areas with real pixels, then export a fresh clean image.",
-        accent: NSColor(hex: 0x494FDF)
+        accent: NSColor(hex: 0x494FDF),
+        accentHighlight: NSColor(hex: 0x4F55F1)
     ),
     Slide(
         sourceName: "02.png",
@@ -52,7 +61,8 @@ let slides = [
         eyebrow: "PDF",
         title: "Flatten clean PDFs",
         subtitle: "Burn redactions into pages and remove hidden PDF structure.",
-        accent: NSColor(hex: 0x494FDF)
+        accent: NSColor(hex: 0x494FDF),
+        accentHighlight: NSColor(hex: 0x4F55F1)
     ),
     Slide(
         sourceName: "03.png",
@@ -60,8 +70,44 @@ let slides = [
         eyebrow: "Metadata",
         title: "Remove hidden metadata",
         subtitle: "Clean images, PDFs, Photos, and folders locally before sharing.",
-        accent: NSColor(hex: 0x494FDF)
+        accent: NSColor(hex: 0x494FDF),
+        accentHighlight: NSColor(hex: 0x4F55F1)
     ),
+]
+
+let chineseSlides = [
+    Slide(
+        sourceName: "01.png",
+        fileName: "01_redact_private_details.png",
+        eyebrow: "图片",
+        title: "遮盖敏感信息",
+        subtitle: "把遮盖真正写进像素，导出不含原始元数据的干净图片。",
+        accent: NSColor(hex: 0x0F7666),
+        accentHighlight: NSColor(hex: 0x2DD4BF)
+    ),
+    Slide(
+        sourceName: "02.png",
+        fileName: "02_flatten_clean_pdfs.png",
+        eyebrow: "PDF",
+        title: "扁平化清理 PDF",
+        subtitle: "遮盖内容会烧进页面，同时移除隐藏结构和文档元数据。",
+        accent: NSColor(hex: 0x0F7666),
+        accentHighlight: NSColor(hex: 0x2DD4BF)
+    ),
+    Slide(
+        sourceName: "03.png",
+        fileName: "03_remove_hidden_metadata.png",
+        eyebrow: "元数据",
+        title: "移除隐藏元数据",
+        subtitle: "本地清理图片、PDF、照片和文件夹，分享前少留隐私痕迹。",
+        accent: NSColor(hex: 0x0F7666),
+        accentHighlight: NSColor(hex: 0x2DD4BF)
+    ),
+]
+
+let languageSets = [
+    LanguageSet(name: "English", sourceSubdirectory: nil, outputSubdirectory: nil, slides: englishSlides),
+    LanguageSet(name: "Chinese", sourceSubdirectory: "zh-Hans", outputSubdirectory: "zh-Hans", slides: chineseSlides),
 ]
 
 let targetSets = [
@@ -104,24 +150,37 @@ let secondary = NSColor.white.withAlphaComponent(0.72)
 let paper = NSColor.black
 let softPaper = NSColor(hex: 0x16181A)
 let border = NSColor.white.withAlphaComponent(0.12)
-let cobalt = NSColor(hex: 0x494FDF)
-let cobaltBright = NSColor(hex: 0x4F55F1)
 let surfaceSoft = NSColor(hex: 0xF4F4F4)
 let white = NSColor.white
 
-for target in targetSets {
-    let outputDirectory = outputRoot.appendingPathComponent(target.outputDirectory)
-    try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+for languageSet in languageSets {
+    let localizedSourceRoot = languageSet.sourceSubdirectory.map {
+        sourceRoot.appendingPathComponent($0)
+    } ?? sourceRoot
+    let localizedOutputRoot = languageSet.outputSubdirectory.map {
+        outputRoot.appendingPathComponent($0)
+    } ?? outputRoot
 
-    for slide in slides {
-        let sourceURL = sourceRoot
-            .appendingPathComponent(target.sourceDirectory)
-            .appendingPathComponent(slide.sourceName)
-        let source = try loadSource(sourceURL)
-        let image = render(slide: slide, source: source, target: target)
-        let outputURL = outputDirectory.appendingPathComponent(slide.fileName)
-        try writePNG(image, to: outputURL)
-        print("Wrote \(target.name): \(outputURL.path)")
+    for target in targetSets {
+        let outputDirectory = localizedOutputRoot.appendingPathComponent(target.outputDirectory)
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        for slide in languageSet.slides {
+            let localizedSourceURL = localizedSourceRoot
+                .appendingPathComponent(target.sourceDirectory)
+                .appendingPathComponent(slide.sourceName)
+            let fallbackSourceURL = sourceRoot
+                .appendingPathComponent(target.sourceDirectory)
+                .appendingPathComponent(slide.sourceName)
+            let sourceURL = FileManager.default.fileExists(atPath: localizedSourceURL.path)
+                ? localizedSourceURL
+                : fallbackSourceURL
+            let source = try loadSource(sourceURL)
+            let image = render(slide: slide, source: source, target: target)
+            let outputURL = outputDirectory.appendingPathComponent(slide.fileName)
+            try writePNG(image, to: outputURL)
+            print("Wrote \(languageSet.name) \(target.name): \(outputURL.path)")
+        }
     }
 }
 
@@ -198,6 +257,7 @@ func drawPhoneSlide(slide: Slide, source: SourceImage, width: CGFloat, height: C
 
     drawAccentPanel(
         color: slide.accent,
+        highlight: slide.accentHighlight,
         rect: topRect(
             x: width * 0.15,
             y: height * 0.35,
@@ -241,6 +301,7 @@ func drawTabletSlide(slide: Slide, source: SourceImage, width: CGFloat, height: 
 
     drawAccentPanel(
         color: slide.accent,
+        highlight: slide.accentHighlight,
         rect: topRect(
             x: width * 0.43,
             y: height * 0.22,
@@ -284,6 +345,7 @@ func drawMacSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGF
 
     drawAccentPanel(
         color: slide.accent,
+        highlight: slide.accentHighlight,
         rect: topRect(
             x: width * 0.12,
             y: height * 0.45,
@@ -313,12 +375,12 @@ func drawMacSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGF
     drawFramedImage(source, in: rect, cornerRadius: 32, shadowBlur: 48, shadowY: -24)
 }
 
-func drawAccentPanel(color: NSColor, rect: NSRect, radius: CGFloat) {
+func drawAccentPanel(color: NSColor, highlight: NSColor, rect: NSRect, radius: CGFloat) {
     let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
     color.setFill()
     path.fill()
 
-    cobaltBright.withAlphaComponent(0.22).setStroke()
+    highlight.withAlphaComponent(0.22).setStroke()
     path.lineWidth = 2
     path.stroke()
 }

@@ -13,11 +13,48 @@ import '../domain/export_format.dart';
 
 part 'file_channel_service.g.dart';
 
+@immutable
+class FileDialogText {
+  const FileDialogText({
+    required this.openButtonText,
+    required this.chooseButtonText,
+    required this.chooseFilesButtonText,
+    required this.chooseFolderButtonText,
+    required this.saveButtonText,
+    required this.shareCleanImageTitle,
+    required this.shareCleanPdfTitle,
+    required this.openFoldersUnsupportedMessage,
+  });
+
+  const FileDialogText.english()
+    : this(
+        openButtonText: 'Open',
+        chooseButtonText: 'Choose',
+        chooseFilesButtonText: 'Choose Files',
+        chooseFolderButtonText: 'Choose Folder',
+        saveButtonText: 'Save',
+        shareCleanImageTitle: 'Share clean image',
+        shareCleanPdfTitle: 'Share clean PDF',
+        openFoldersUnsupportedMessage:
+            'Opening output folders is only available on macOS.',
+      );
+
+  final String openButtonText;
+  final String chooseButtonText;
+  final String chooseFilesButtonText;
+  final String chooseFolderButtonText;
+  final String saveButtonText;
+  final String shareCleanImageTitle;
+  final String shareCleanPdfTitle;
+  final String openFoldersUnsupportedMessage;
+}
+
 class FileChannelService {
-  FileChannelService();
+  FileChannelService({this.dialogText = const FileDialogText.english()});
 
   static const _channel = MethodChannel('app.redactkit/files');
   static const _sharePositionOrigin = Rect.fromLTWH(1, 1, 1, 1);
+  final FileDialogText dialogText;
 
   Future<Uint8List?> openImageBytes() async {
     return (await openImageFile())?.bytes;
@@ -26,7 +63,7 @@ class FileChannelService {
   Future<PickedImageBytes?> openImageFile() async {
     final file = await file_selector.openFile(
       acceptedTypeGroups: _imageTypeGroups,
-      confirmButtonText: 'Open',
+      confirmButtonText: dialogText.openButtonText,
     );
     if (file == null) return null;
 
@@ -40,7 +77,7 @@ class FileChannelService {
   Future<PickedPdfBytes?> openPdfFile() async {
     final file = await file_selector.openFile(
       acceptedTypeGroups: _pdfTypeGroups,
-      confirmButtonText: 'Open',
+      confirmButtonText: dialogText.openButtonText,
     );
     if (file == null) return null;
 
@@ -54,7 +91,7 @@ class FileChannelService {
   Future<MetadataInputPdf?> chooseMetadataPdfFile() async {
     final file = await file_selector.openFile(
       acceptedTypeGroups: _pdfTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: dialogText.chooseButtonText,
     );
     if (file == null) return null;
 
@@ -128,7 +165,7 @@ class FileChannelService {
   Future<MetadataPickedInput?> chooseMetadataFiles() async {
     final files = await file_selector.openFiles(
       acceptedTypeGroups: _metadataFileTypeGroups,
-      confirmButtonText: 'Choose Files',
+      confirmButtonText: dialogText.chooseFilesButtonText,
     );
     return _metadataPickedInputFromFiles(files);
   }
@@ -146,7 +183,7 @@ class FileChannelService {
   Future<List<MetadataInputPdf>> chooseMetadataPdfFiles() async {
     final files = await file_selector.openFiles(
       acceptedTypeGroups: _pdfTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: dialogText.chooseButtonText,
     );
 
     final pdfs = <MetadataInputPdf>[];
@@ -228,7 +265,7 @@ class FileChannelService {
   Future<List<PickedImageBytes>> openImageFilesBytes() async {
     final files = await file_selector.openFiles(
       acceptedTypeGroups: _imageTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: dialogText.chooseButtonText,
     );
 
     final images = <PickedImageBytes>[];
@@ -267,7 +304,7 @@ class FileChannelService {
   Future<MetadataInputImage?> chooseMetadataImageFile() async {
     final file = await file_selector.openFile(
       acceptedTypeGroups: _imageTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: dialogText.chooseButtonText,
     );
     if (file == null) return null;
 
@@ -284,7 +321,7 @@ class FileChannelService {
   Future<List<MetadataInputImage>> chooseMetadataImageFiles() async {
     final files = await file_selector.openFiles(
       acceptedTypeGroups: _imageTypeGroups,
-      confirmButtonText: 'Choose',
+      confirmButtonText: dialogText.chooseButtonText,
     );
 
     final images = <MetadataInputImage>[];
@@ -306,7 +343,7 @@ class FileChannelService {
     if (!_supportsDirectoryPicker) return null;
 
     final path = await file_selector.getDirectoryPath(
-      confirmButtonText: 'Choose Folder',
+      confirmButtonText: dialogText.chooseFolderButtonText,
     );
     if (path == null) return null;
 
@@ -401,7 +438,7 @@ class FileChannelService {
     final destination = await file_selector.getSaveLocation(
       acceptedTypeGroups: <file_selector.XTypeGroup>[_exportTypeGroup(format)],
       suggestedName: name,
-      confirmButtonText: 'Save',
+      confirmButtonText: dialogText.saveButtonText,
       canCreateDirectories: true,
     );
     if (destination == null) return null;
@@ -421,7 +458,7 @@ class FileChannelService {
       bytes: bytes,
       typeGroup: _pdfExportTypeGroup,
       mimeType: _pdfMimeType,
-      shareTitle: 'Share clean PDF',
+      shareTitle: dialogText.shareCleanPdfTitle,
     );
   }
 
@@ -441,7 +478,7 @@ class FileChannelService {
         share_plus.ShareParams(
           files: <share_plus.XFile>[file],
           fileNameOverrides: <String>[name],
-          title: 'Share clean image',
+          title: dialogText.shareCleanImageTitle,
           sharePositionOrigin: _sharePositionOrigin,
         ),
       );
@@ -462,7 +499,7 @@ class FileChannelService {
       bytes: bytes,
       extension: 'pdf',
       mimeType: _pdfMimeType,
-      shareTitle: 'Share clean PDF',
+      shareTitle: dialogText.shareCleanPdfTitle,
     );
   }
 
@@ -494,7 +531,7 @@ class FileChannelService {
     final destination = await file_selector.getSaveLocation(
       acceptedTypeGroups: <file_selector.XTypeGroup>[typeGroup],
       suggestedName: name,
-      confirmButtonText: 'Save',
+      confirmButtonText: dialogText.saveButtonText,
       canCreateDirectories: true,
     );
     if (destination == null) return null;
@@ -626,7 +663,7 @@ class FileChannelService {
     if (defaultTargetPlatform != TargetPlatform.macOS) {
       throw PlatformException(
         code: 'unsupported_platform',
-        message: 'Opening output folders is only available on macOS.',
+        message: dialogText.openFoldersUnsupportedMessage,
       );
     }
 
@@ -787,8 +824,13 @@ class MetadataCleanDestination {
 }
 
 @riverpod
+FileDialogText fileDialogText(Ref ref) {
+  return const FileDialogText.english();
+}
+
+@riverpod
 FileChannelService fileChannelService(Ref ref) {
-  return FileChannelService();
+  return FileChannelService(dialogText: ref.watch(fileDialogTextProvider));
 }
 
 const _imageTypeGroups = <file_selector.XTypeGroup>[
