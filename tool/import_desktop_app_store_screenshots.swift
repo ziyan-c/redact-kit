@@ -57,7 +57,7 @@ let targetSets: [(sources: [URL], targets: [Target])] = [
     (
         sources: Array(macSources.prefix(3)),
         targets: [
-            Target(directory: "macos_2880x1800", width: 2880, height: 1800, mode: .fit(background: NSColor(hex: 0xF6F7F8))),
+            Target(directory: "macos_2880x1800", width: 2880, height: 1800, mode: .fit(background: NSColor.black)),
         ]
     ),
 ]
@@ -68,7 +68,10 @@ for set in targetSets {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         for (index, sourceURL) in set.sources.enumerated() {
-            let source = try loadSource(sourceURL)
+            let loadedSource = try loadSource(sourceURL)
+            let source = target.directory.hasPrefix("macos")
+                ? trimBlackBorder(loadedSource, tolerance: 12, padding: 28)
+                : loadedSource
             let rendered = render(source: source, target: target)
             let outputURL = outputDirectory.appendingPathComponent(String(format: "%02d.png", index + 1))
             try writePNG(rendered, to: outputURL)
@@ -170,6 +173,60 @@ func loadSource(_ url: URL) throws -> SourceImage {
     let image = NSImage(size: size)
     image.addRepresentation(bitmap)
     return SourceImage(url: url, image: image, width: CGFloat(bitmap.pixelsWide), height: CGFloat(bitmap.pixelsHigh))
+}
+
+func trimBlackBorder(_ source: SourceImage, tolerance: CGFloat, padding: Int) -> SourceImage {
+    guard let rep = source.image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+          let cgImage = rep.cgImage else {
+        return source
+    }
+
+    var minX = rep.pixelsWide
+    var minY = rep.pixelsHigh
+    var maxX = 0
+    var maxY = 0
+
+    for y in 0..<rep.pixelsHigh {
+        for x in 0..<rep.pixelsWide {
+            guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            let brightness = max(color.redComponent, color.greenComponent, color.blueComponent) * 255
+            if brightness > tolerance {
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+    }
+
+    guard minX < maxX, minY < maxY else {
+        return source
+    }
+
+    minX = max(0, minX - padding)
+    minY = max(0, minY - padding)
+    maxX = min(rep.pixelsWide - 1, maxX + padding)
+    maxY = min(rep.pixelsHigh - 1, maxY + padding)
+
+    let crop = CGRect(
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1
+    )
+    guard let cropped = cgImage.cropping(to: crop) else {
+        return source
+    }
+
+    let size = NSSize(width: cropped.width, height: cropped.height)
+    return SourceImage(
+        url: source.url,
+        image: NSImage(cgImage: cropped, size: size),
+        width: CGFloat(cropped.width),
+        height: CGFloat(cropped.height)
+    )
 }
 
 func writePNG(_ image: CGImage, to url: URL) throws {

@@ -41,26 +41,26 @@ let slides = [
     Slide(
         sourceName: "01.png",
         fileName: "01_redact_private_details.png",
-        eyebrow: "IMAGE REDACTION",
+        eyebrow: "Image",
         title: "Redact private details",
-        subtitle: "Cover sensitive areas with real pixels before sharing.",
-        accent: NSColor(hex: 0x2E7D73)
+        subtitle: "Cover sensitive areas with real pixels, then export a fresh clean image.",
+        accent: NSColor(hex: 0x494FDF)
     ),
     Slide(
         sourceName: "02.png",
         fileName: "02_flatten_clean_pdfs.png",
-        eyebrow: "PDF REDACTION",
+        eyebrow: "PDF",
         title: "Flatten clean PDFs",
-        subtitle: "Redact document pages and export a fresh flattened copy.",
-        accent: NSColor(hex: 0x3F6F8F)
+        subtitle: "Burn redactions into pages and remove hidden PDF structure.",
+        accent: NSColor(hex: 0x494FDF)
     ),
     Slide(
         sourceName: "03.png",
         fileName: "03_remove_hidden_metadata.png",
-        eyebrow: "METADATA CLEANUP",
+        eyebrow: "Metadata",
         title: "Remove hidden metadata",
-        subtitle: "Clean images and PDFs locally, including batch folders.",
-        accent: NSColor(hex: 0x5D7964)
+        subtitle: "Clean images, PDFs, Photos, and folders locally before sharing.",
+        accent: NSColor(hex: 0x494FDF)
     ),
 ]
 
@@ -99,11 +99,14 @@ let targetSets = [
     ),
 ]
 
-let ink = NSColor(hex: 0x161B18)
-let secondary = NSColor(hex: 0x5C645F)
-let paper = NSColor(hex: 0xF7F7F4)
-let softPaper = NSColor(hex: 0xEEF4F0)
-let border = NSColor(hex: 0xD9E1DC)
+let ink = NSColor.white
+let secondary = NSColor.white.withAlphaComponent(0.72)
+let paper = NSColor.black
+let softPaper = NSColor(hex: 0x16181A)
+let border = NSColor.white.withAlphaComponent(0.12)
+let cobalt = NSColor(hex: 0x494FDF)
+let cobaltBright = NSColor(hex: 0x4F55F1)
+let surfaceSoft = NSColor(hex: 0xF4F4F4)
 let white = NSColor.white
 
 for target in targetSets {
@@ -167,20 +170,46 @@ func drawBackground(width: CGFloat, height: CGFloat) {
     paper.setFill()
     NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
 
-    softPaper.withAlphaComponent(0.78).setFill()
+    softPaper.setFill()
     NSBezierPath(
-        roundedRect: topRect(x: width * 0.06, y: height * 0.30, width: width * 0.88, height: height * 0.64, canvasHeight: height),
-        xRadius: 36,
-        yRadius: 36
+        roundedRect: topRect(
+            x: width * 0.05,
+            y: height * 0.09,
+            width: width * 0.90,
+            height: height * 0.82,
+            canvasHeight: height
+        ),
+        xRadius: max(36, width * 0.032),
+        yRadius: max(36, width * 0.032)
     ).fill()
 }
 
 func drawPhoneSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGFloat) {
     let margin = width * 0.075
-    drawCopy(slide: slide, x: margin, y: 118, width: width - margin * 2, titleSize: width * 0.071, subtitleSize: width * 0.030, canvasHeight: height)
+    drawCopy(
+        slide: slide,
+        x: margin,
+        y: height * 0.055,
+        width: width - margin * 2,
+        titleSize: width * 0.073,
+        subtitleSize: width * 0.031,
+        canvasHeight: height
+    )
+
+    drawAccentPanel(
+        color: slide.accent,
+        rect: topRect(
+            x: width * 0.15,
+            y: height * 0.35,
+            width: width * 0.70,
+            height: height * 0.54,
+            canvasHeight: height
+        ),
+        radius: width * 0.07
+    )
 
     let maxFrameWidth = width * 0.78
-    let maxFrameHeight = height * 0.70
+    let maxFrameHeight = height * 0.67
     var frameWidth = maxFrameWidth
     var frameHeight = frameWidth * source.height / source.width
     if frameHeight > maxFrameHeight {
@@ -190,19 +219,39 @@ func drawPhoneSlide(slide: Slide, source: SourceImage, width: CGFloat, height: C
 
     let rect = topRect(
         x: (width - frameWidth) / 2,
-        y: height - frameHeight - 74,
+        y: height - frameHeight - height * 0.055,
         width: frameWidth,
         height: frameHeight,
         canvasHeight: height
     )
-    drawFramedImage(source, in: rect, cornerRadius: width * 0.055, shadowBlur: 32, shadowY: -18)
+    drawFramedImage(source, in: rect, cornerRadius: width * 0.058, shadowBlur: 46, shadowY: -24)
 }
 
 func drawTabletSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGFloat) {
-    let margin = width * 0.07
-    drawCopy(slide: slide, x: margin, y: 86, width: width * 0.66, titleSize: width * 0.038, subtitleSize: width * 0.017, canvasHeight: height)
+    let margin = width * 0.065
+    drawCopy(
+        slide: slide,
+        x: margin,
+        y: height * 0.105,
+        width: width * 0.32,
+        titleSize: width * 0.047,
+        subtitleSize: width * 0.0185,
+        canvasHeight: height
+    )
 
-    let maxFrameWidth = width * 0.82
+    drawAccentPanel(
+        color: slide.accent,
+        rect: topRect(
+            x: width * 0.43,
+            y: height * 0.22,
+            width: width * 0.48,
+            height: height * 0.62,
+            canvasHeight: height
+        ),
+        radius: 56
+    )
+
+    let maxFrameWidth = width * 0.54
     let maxFrameHeight = height * 0.72
     var frameWidth = maxFrameWidth
     var frameHeight = frameWidth * source.height / source.width
@@ -212,21 +261,41 @@ func drawTabletSlide(slide: Slide, source: SourceImage, width: CGFloat, height: 
     }
 
     let rect = topRect(
-        x: (width - frameWidth) / 2,
-        y: height - frameHeight - 86,
+        x: width - frameWidth - margin,
+        y: (height - frameHeight) / 2,
         width: frameWidth,
         height: frameHeight,
         canvasHeight: height
     )
-    drawFramedImage(source, in: rect, cornerRadius: 34, shadowBlur: 34, shadowY: -18)
+    drawFramedImage(source, in: rect, cornerRadius: 34, shadowBlur: 46, shadowY: -22)
 }
 
 func drawMacSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGFloat) {
-    let margin = width * 0.065
-    drawCopy(slide: slide, x: margin, y: 72, width: width * 0.62, titleSize: width * 0.032, subtitleSize: width * 0.014, canvasHeight: height)
+    let margin = width * 0.06
+    drawCopy(
+        slide: slide,
+        x: margin,
+        y: height * 0.07,
+        width: width * 0.58,
+        titleSize: width * 0.042,
+        subtitleSize: width * 0.016,
+        canvasHeight: height
+    )
 
-    let maxFrameWidth = width * 0.82
-    let maxFrameHeight = height * 0.70
+    drawAccentPanel(
+        color: slide.accent,
+        rect: topRect(
+            x: width * 0.12,
+            y: height * 0.45,
+            width: width * 0.76,
+            height: height * 0.42,
+            canvasHeight: height
+        ),
+        radius: 58
+    )
+
+    let maxFrameWidth = width * 0.80
+    let maxFrameHeight = height * 0.64
     var frameWidth = maxFrameWidth
     var frameHeight = frameWidth * source.height / source.width
     if frameHeight > maxFrameHeight {
@@ -236,12 +305,22 @@ func drawMacSlide(slide: Slide, source: SourceImage, width: CGFloat, height: CGF
 
     let rect = topRect(
         x: (width - frameWidth) / 2,
-        y: height - frameHeight - 70,
+        y: height - frameHeight - height * 0.075,
         width: frameWidth,
         height: frameHeight,
         canvasHeight: height
     )
-    drawFramedImage(source, in: rect, cornerRadius: 28, shadowBlur: 34, shadowY: -20)
+    drawFramedImage(source, in: rect, cornerRadius: 32, shadowBlur: 48, shadowY: -24)
+}
+
+func drawAccentPanel(color: NSColor, rect: NSRect, radius: CGFloat) {
+    let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    color.setFill()
+    path.fill()
+
+    cobaltBright.withAlphaComponent(0.22).setStroke()
+    path.lineWidth = 2
+    path.stroke()
 }
 
 func drawCopy(
@@ -253,12 +332,12 @@ func drawCopy(
     subtitleSize: CGFloat,
     canvasHeight: CGFloat
 ) {
-    let pillHeight = max(42, titleSize * 0.58)
+    let pillHeight = max(42, titleSize * 0.52)
     drawPill(
         text: slide.eyebrow,
         x: x,
         y: y,
-        width: max(210, titleSize * 4.5),
+        width: max(140, titleSize * 2.6),
         height: pillHeight,
         color: slide.accent,
         canvasHeight: canvasHeight
@@ -270,9 +349,9 @@ func drawCopy(
         x: x,
         y: titleY,
         width: width,
-        font: .systemFont(ofSize: titleSize, weight: .heavy),
+        font: .systemFont(ofSize: titleSize, weight: .medium),
         color: ink,
-        lineHeight: 1.02,
+        lineHeight: 1.00,
         canvasHeight: canvasHeight
     )
 
@@ -282,26 +361,25 @@ func drawCopy(
         x: x,
         y: subtitleY,
         width: width,
-        font: .systemFont(ofSize: subtitleSize, weight: .semibold),
+        font: .systemFont(ofSize: subtitleSize, weight: .regular),
         color: secondary,
-        lineHeight: 1.18,
+        lineHeight: 1.22,
         canvasHeight: canvasHeight
     )
 }
 
 func drawPill(text: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, color: NSColor, canvasHeight: CGFloat) {
     let rect = topRect(x: x, y: y, width: width, height: height, canvasHeight: canvasHeight)
-    color.withAlphaComponent(0.10).setFill()
+    color.setFill()
     let path = NSBezierPath(roundedRect: rect, xRadius: height / 2, yRadius: height / 2)
     path.fill()
-    color.withAlphaComponent(0.18).setStroke()
+    white.withAlphaComponent(0.14).setStroke()
     path.lineWidth = 1.5
     path.stroke()
 
     let attrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: height * 0.36, weight: .bold),
-        .foregroundColor: color,
-        .kern: 1.2,
+        .font: NSFont.systemFont(ofSize: height * 0.36, weight: .semibold),
+        .foregroundColor: white,
     ]
     let attributed = NSAttributedString(string: text, attributes: attrs)
     let size = attributed.size()
@@ -313,11 +391,11 @@ func drawFramedImage(_ source: SourceImage, in rect: NSRect, cornerRadius: CGFlo
 
     NSGraphicsContext.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.48)
     shadow.shadowOffset = NSSize(width: 0, height: shadowY)
     shadow.shadowBlurRadius = shadowBlur
     shadow.set()
-    white.setFill()
+    surfaceSoft.setFill()
     path.fill()
     NSGraphicsContext.restoreGraphicsState()
 
