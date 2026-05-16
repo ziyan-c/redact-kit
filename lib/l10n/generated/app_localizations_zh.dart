@@ -77,6 +77,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clear => '清除';
 
   @override
+  String get crop => '裁剪';
+
+  @override
+  String get cancelCrop => '取消';
+
+  @override
+  String get applyCrop => '应用';
+
+  @override
   String get export => '导出';
 
   @override
@@ -549,6 +558,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String statusLoadedImage(int width, int height) {
     return '已载入 $width x ${height}px';
   }
+
+  @override
+  String get statusAdjustingCrop => '调整裁剪区域';
+
+  @override
+  String get statusCroppingImage => '正在裁剪图片';
+
+  @override
+  String statusImageCropped(int width, int height) {
+    return '已裁剪为 $width x ${height}px';
+  }
+
+  @override
+  String get statusCropCanceled => '已取消裁剪';
 
   @override
   String statusPdfPage(int pageNumber, int pageCount) {

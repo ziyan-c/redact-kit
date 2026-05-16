@@ -8,6 +8,10 @@ enum RedactionStatusKind {
   openingPhotoLibrary,
   openingPdf,
   loadedImage,
+  adjustingCrop,
+  croppingImage,
+  imageCropped,
+  cropCanceled,
   pdfPage,
   renderingPdfPage,
   flatteningCleanPdf,
@@ -124,6 +128,27 @@ class RedactionStatus {
       height: height,
     );
   }
+
+  const RedactionStatus.adjustingCrop()
+    : this._(RedactionStatusKind.adjustingCrop, 'Adjusting crop');
+
+  const RedactionStatus.croppingImage()
+    : this._(RedactionStatusKind.croppingImage, 'Cropping image');
+
+  factory RedactionStatus.imageCropped({
+    required int width,
+    required int height,
+  }) {
+    return RedactionStatus._(
+      RedactionStatusKind.imageCropped,
+      'Cropped to $width x ${height}px',
+      width: width,
+      height: height,
+    );
+  }
+
+  const RedactionStatus.cropCanceled()
+    : this._(RedactionStatusKind.cropCanceled, 'Crop canceled');
 
   factory RedactionStatus.pdfPage({
     required int pageNumber,

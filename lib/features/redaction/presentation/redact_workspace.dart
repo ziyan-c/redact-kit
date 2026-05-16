@@ -192,6 +192,13 @@ String _localizedStatus(RedactionStatus status, AppLocalizations l10n) {
       status.width ?? 0,
       status.height ?? 0,
     ),
+    RedactionStatusKind.adjustingCrop => l10n.statusAdjustingCrop,
+    RedactionStatusKind.croppingImage => l10n.statusCroppingImage,
+    RedactionStatusKind.imageCropped => l10n.statusImageCropped(
+      status.width ?? 0,
+      status.height ?? 0,
+    ),
+    RedactionStatusKind.cropCanceled => l10n.statusCropCanceled,
     RedactionStatusKind.pdfPage => l10n.statusPdfPage(pageNumber, pageCount),
     RedactionStatusKind.renderingPdfPage => l10n.statusRenderingPdfPage(
       pageNumber,
@@ -639,6 +646,7 @@ class _DesktopLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
 
     return ColoredBox(
       color: redactKitBackgroundColor,
@@ -650,13 +658,15 @@ class _DesktopLayout extends ConsumerWidget {
             status: state.statusMessage,
             canUndo: mode == _WorkspaceMode.pdf
                 ? state.currentPdfRedactions.isNotEmpty
-                : state.hasRedactions,
+                : state.hasRedactions && !isImageCropping,
             canClear: mode == _WorkspaceMode.pdf
                 ? state.currentPdfRedactions.isNotEmpty
-                : state.hasRedactions,
+                : state.hasRedactions && !isImageCropping,
             canExport: mode == _WorkspaceMode.pdf
                 ? state.hasPdf && !state.isExporting
-                : state.hasImage && !state.isExporting,
+                : state.hasImage && !state.isExporting && !isImageCropping,
+            canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+            isCropping: isImageCropping,
             isOpening: state.isOpening,
             isExporting: state.isExporting,
             onOpen: mode == _WorkspaceMode.pdf
@@ -669,6 +679,8 @@ class _DesktopLayout extends ConsumerWidget {
             onClear: mode == _WorkspaceMode.pdf
                 ? controller.clearPdfPageRedactions
                 : controller.clear,
+            onStartCrop: controller.startCrop,
+            onCancelCrop: controller.cancelCrop,
             onExport: mode == _WorkspaceMode.pdf
                 ? controller.exportPdf
                 : controller.exportImage,
@@ -692,6 +704,10 @@ class _DesktopLayout extends ConsumerWidget {
                       onBeginRedaction: controller.beginRedaction,
                       onUpdateRedaction: controller.updateRedaction,
                       onFinishRedaction: controller.finishRedaction,
+                      cropRect: state.cropRect,
+                      onCropChanged: controller.updateCrop,
+                      onCancelCrop: controller.cancelCrop,
+                      onApplyCrop: controller.applyCrop,
                       onOpen: controller.openImage,
                       onOpenPhotos: controller.openPhotoLibrary,
                       emptyTitle: context.l10n.chooseImage,
@@ -776,9 +792,10 @@ class _MobileLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
     final canExport = mode == _WorkspaceMode.pdf
         ? state.hasPdf && !state.isExporting
-        : state.hasImage && !state.isExporting;
+        : state.hasImage && !state.isExporting && !isImageCropping;
     final hasDocument = mode == _WorkspaceMode.pdf
         ? state.hasPdf
         : state.hasImage;
@@ -825,6 +842,10 @@ class _MobileLayout extends ConsumerWidget {
                 onBeginRedaction: controller.beginRedaction,
                 onUpdateRedaction: controller.updateRedaction,
                 onFinishRedaction: controller.finishRedaction,
+                cropRect: state.cropRect,
+                onCropChanged: controller.updateCrop,
+                onCancelCrop: controller.cancelCrop,
+                onApplyCrop: controller.applyCrop,
                 onOpen: controller.openImage,
                 onOpenPhotos: controller.openPhotoLibrary,
                 emptyTitle: context.l10n.chooseImage,
@@ -863,12 +884,14 @@ class _MobileLayout extends ConsumerWidget {
             _MobileBottomBar(
               canUndo: mode == _WorkspaceMode.pdf
                   ? state.currentPdfRedactions.isNotEmpty
-                  : state.hasRedactions,
+                  : state.hasRedactions && !isImageCropping,
               canClear: mode == _WorkspaceMode.pdf
                   ? state.currentPdfRedactions.isNotEmpty
-                  : state.hasRedactions,
+                  : state.hasRedactions && !isImageCropping,
               isOpening: state.isOpening,
               canExport: canExport,
+              canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+              isCropping: isImageCropping,
               onOpen: mode == _WorkspaceMode.pdf
                   ? controller.openPdf
                   : controller.openImage,
@@ -879,6 +902,8 @@ class _MobileLayout extends ConsumerWidget {
               onClear: mode == _WorkspaceMode.pdf
                   ? controller.clearPdfPageRedactions
                   : controller.clear,
+              onStartCrop: controller.startCrop,
+              onCancelCrop: controller.cancelCrop,
               onExportOptions: mode == _WorkspaceMode.pdf
                   ? () => _showPdfExportSheet(context)
                   : () => _showExportSheet(context),
@@ -904,9 +929,10 @@ class _TabletLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(redactionControllerProvider.notifier);
+    final isImageCropping = mode == _WorkspaceMode.redact && state.isCropping;
     final canExport = mode == _WorkspaceMode.pdf
         ? state.hasPdf && !state.isExporting
-        : state.hasImage && !state.isExporting;
+        : state.hasImage && !state.isExporting && !isImageCropping;
 
     return Column(
       children: <Widget>[
@@ -916,11 +942,13 @@ class _TabletLayout extends ConsumerWidget {
           status: state.statusMessage,
           canUndo: mode == _WorkspaceMode.pdf
               ? state.currentPdfRedactions.isNotEmpty
-              : state.hasRedactions,
+              : state.hasRedactions && !isImageCropping,
           canClear: mode == _WorkspaceMode.pdf
               ? state.currentPdfRedactions.isNotEmpty
-              : state.hasRedactions,
+              : state.hasRedactions && !isImageCropping,
           canExport: canExport,
+          canCrop: state.hasImage && !state.isOpening && !state.isExporting,
+          isCropping: isImageCropping,
           isExporting: state.isExporting,
           onUndo: mode == _WorkspaceMode.pdf
               ? controller.undoPdfRedaction
@@ -928,6 +956,8 @@ class _TabletLayout extends ConsumerWidget {
           onClear: mode == _WorkspaceMode.pdf
               ? controller.clearPdfPageRedactions
               : controller.clear,
+          onStartCrop: controller.startCrop,
+          onCancelCrop: controller.cancelCrop,
           onExport: mode == _WorkspaceMode.pdf
               ? controller.exportPdf
               : controller.exportImage,
@@ -973,6 +1003,10 @@ class _TabletLayout extends ConsumerWidget {
               onBeginRedaction: controller.beginRedaction,
               onUpdateRedaction: controller.updateRedaction,
               onFinishRedaction: controller.finishRedaction,
+              cropRect: state.cropRect,
+              onCropChanged: controller.updateCrop,
+              onCancelCrop: controller.cancelCrop,
+              onApplyCrop: controller.applyCrop,
               onOpen: controller.openImage,
               onOpenPhotos: controller.openPhotoLibrary,
               emptyTitle: context.l10n.chooseImage,
@@ -1015,9 +1049,13 @@ class _TabletTopBar extends StatelessWidget {
     required this.canUndo,
     required this.canClear,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.isExporting,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExport,
     required this.onSaveToPhotos,
     required this.onShare,
@@ -1031,9 +1069,13 @@ class _TabletTopBar extends StatelessWidget {
   final bool canUndo;
   final bool canClear;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final bool isExporting;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExport;
   final VoidCallback onSaveToPhotos;
   final VoidCallback onShare;
@@ -1091,6 +1133,19 @@ class _TabletTopBar extends StatelessWidget {
               onPressed: canClear ? onClear : null,
               icon: const Icon(Icons.delete_outline),
             ),
+            if (mode == _WorkspaceMode.redact)
+              _TopBarIconButton(
+                tooltip: isCropping
+                    ? context.l10n.cancelCrop
+                    : context.l10n.crop,
+                onPressed: canCrop
+                    ? isCropping
+                          ? onCancelCrop
+                          : onStartCrop
+                    : null,
+                icon: const Icon(Icons.crop),
+                tonal: isCropping,
+              ),
             _TopBarIconButton(
               tooltip: context.l10n.saveToFiles,
               onPressed: canExport ? onExport : null,
@@ -1856,10 +1911,14 @@ class _MobileBottomBar extends StatelessWidget {
     required this.canClear,
     required this.isOpening,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.onOpen,
     required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExportOptions,
     this.pdfMode = false,
   });
@@ -1868,10 +1927,14 @@ class _MobileBottomBar extends StatelessWidget {
   final bool canClear;
   final bool isOpening;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final VoidCallback onOpen;
   final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExportOptions;
   final bool pdfMode;
 
@@ -1896,6 +1959,16 @@ class _MobileBottomBar extends StatelessWidget {
               icon: Icons.photo_library_outlined,
               label: context.l10n.photos,
               onPressed: isOpening ? null : onOpenPhotos,
+            ),
+          if (!pdfMode)
+            _MobileToolbarItem(
+              icon: Icons.crop,
+              label: isCropping ? context.l10n.cancelCrop : context.l10n.crop,
+              onPressed: canCrop
+                  ? isCropping
+                        ? onCancelCrop
+                        : onStartCrop
+                  : null,
             ),
           _MobileToolbarItem(
             icon: Icons.undo,
@@ -2001,7 +2074,8 @@ void _showExportSheet(BuildContext context) {
             final state = ref.watch(redactionControllerProvider);
             final controller = ref.read(redactionControllerProvider.notifier);
             final image = state.image;
-            final canExport = state.hasImage && !state.isExporting;
+            final canExport =
+                state.hasImage && !state.isExporting && !state.isCropping;
 
             return ConstrainedBox(
               constraints: BoxConstraints(
@@ -4114,6 +4188,10 @@ class _CanvasArea extends ConsumerWidget {
     required this.onOpen,
     required this.emptyTitle,
     required this.openLabel,
+    this.cropRect,
+    this.onCropChanged,
+    this.onCancelCrop,
+    this.onApplyCrop,
     this.onOpenPhotos,
     this.margin = const EdgeInsets.fromLTRB(16, 0, 0, 16),
     this.showBorder = true,
@@ -4130,6 +4208,10 @@ class _CanvasArea extends ConsumerWidget {
   final void Function(Offset localPosition, Rect imageRect) onUpdateRedaction;
   final VoidCallback onFinishRedaction;
   final VoidCallback onOpen;
+  final Rect? cropRect;
+  final ValueChanged<Rect>? onCropChanged;
+  final VoidCallback? onCancelCrop;
+  final VoidCallback? onApplyCrop;
   final VoidCallback? onOpenPhotos;
   final String emptyTitle;
   final String openLabel;
@@ -4200,6 +4282,27 @@ class _CanvasArea extends ConsumerWidget {
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
           final imageRect = _fitImageRect(image, size);
+          final cropRect = this.cropRect;
+          final onCropChanged = this.onCropChanged;
+          final onCancelCrop = this.onCancelCrop;
+          final onApplyCrop = this.onApplyCrop;
+
+          if (cropRect != null &&
+              onCropChanged != null &&
+              onCancelCrop != null &&
+              onApplyCrop != null) {
+            return _CropCanvas(
+              state: state,
+              image: image,
+              imageRect: imageRect,
+              canvasSize: size,
+              redactions: redactions,
+              cropRect: cropRect,
+              onCropChanged: onCropChanged,
+              onCancelCrop: onCancelCrop,
+              onApplyCrop: onApplyCrop,
+            );
+          }
 
           if (enablePanZoom) {
             return _ZoomableRedactionCanvas(
@@ -4625,6 +4728,402 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
   }
 }
 
+enum _CropDragHandle {
+  newRect,
+  move,
+  left,
+  topLeft,
+  top,
+  topRight,
+  right,
+  bottomRight,
+  bottom,
+  bottomLeft,
+}
+
+class _CropCanvas extends StatefulWidget {
+  const _CropCanvas({
+    required this.state,
+    required this.image,
+    required this.imageRect,
+    required this.canvasSize,
+    required this.redactions,
+    required this.cropRect,
+    required this.onCropChanged,
+    required this.onCancelCrop,
+    required this.onApplyCrop,
+  });
+
+  final RedactionState state;
+  final ui.Image image;
+  final Rect imageRect;
+  final Size canvasSize;
+  final List<RedactionRegion> redactions;
+  final Rect cropRect;
+  final ValueChanged<Rect> onCropChanged;
+  final VoidCallback onCancelCrop;
+  final VoidCallback onApplyCrop;
+
+  @override
+  State<_CropCanvas> createState() => _CropCanvasState();
+}
+
+class _CropCanvasState extends State<_CropCanvas> {
+  static const double _handleRadius = 24;
+
+  _CropDragHandle? _dragHandle;
+  Rect? _dragStartRect;
+  Offset? _dragStartPoint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        _RedactionPaintSurface(
+          state: widget.state,
+          image: widget.image,
+          imageRect: widget.imageRect,
+          redactions: widget.redactions,
+        ),
+        Positioned.fill(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: _handlePanStart,
+              onPanUpdate: _handlePanUpdate,
+              onPanEnd: (_) => _clearDrag(),
+              onPanCancel: _clearDrag,
+              child: CustomPaint(
+                painter: _CropOverlayPainter(
+                  image: widget.image,
+                  imageRect: widget.imageRect,
+                  cropRect: widget.cropRect,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 18,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: redactKitSecondaryBackgroundColor.withValues(
+                    alpha: 0.94,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: redactKitSubtleBorderColor),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: redactKitChromeShadowColor,
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: widget.onCancelCrop,
+                          icon: const Icon(CupertinoIcons.xmark),
+                          label: context.l10n.cancelCrop,
+                          emphasis: _CupertinoControlEmphasis.outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _CupertinoActionButton(
+                          onPressed: widget.onApplyCrop,
+                          icon: const Icon(CupertinoIcons.check_mark),
+                          label: context.l10n.applyCrop,
+                          emphasis: _CupertinoControlEmphasis.filled,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handlePanStart(DragStartDetails details) {
+    final position = details.localPosition;
+    final displayCrop = _imageToDisplayRect(
+      widget.cropRect,
+      widget.imageRect,
+      widget.image,
+    );
+    final hit = _hitTestHandle(displayCrop, position);
+    if (hit == null && !widget.imageRect.contains(position)) return;
+
+    final point = _displayToImagePoint(
+      position,
+      widget.imageRect,
+      widget.image,
+    );
+    _dragHandle = hit ?? _CropDragHandle.newRect;
+    _dragStartPoint = point;
+    _dragStartRect = widget.cropRect;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    final handle = _dragHandle;
+    final startPoint = _dragStartPoint;
+    final startRect = _dragStartRect;
+    if (handle == null || startPoint == null || startRect == null) return;
+
+    final point = _displayToImagePoint(
+      details.localPosition,
+      widget.imageRect,
+      widget.image,
+    );
+    final delta = point - startPoint;
+    final next = switch (handle) {
+      _CropDragHandle.newRect => Rect.fromPoints(startPoint, point),
+      _CropDragHandle.move => _clampMovedCropRect(
+        startRect.shift(delta),
+        widget.image,
+      ),
+      _CropDragHandle.left => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.topLeft => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top + delta.dy,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.top => Rect.fromLTRB(
+        startRect.left,
+        startRect.top + delta.dy,
+        startRect.right,
+        startRect.bottom,
+      ),
+      _CropDragHandle.topRight => Rect.fromLTRB(
+        startRect.left,
+        startRect.top + delta.dy,
+        startRect.right + delta.dx,
+        startRect.bottom,
+      ),
+      _CropDragHandle.right => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right + delta.dx,
+        startRect.bottom,
+      ),
+      _CropDragHandle.bottomRight => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right + delta.dx,
+        startRect.bottom + delta.dy,
+      ),
+      _CropDragHandle.bottom => Rect.fromLTRB(
+        startRect.left,
+        startRect.top,
+        startRect.right,
+        startRect.bottom + delta.dy,
+      ),
+      _CropDragHandle.bottomLeft => Rect.fromLTRB(
+        startRect.left + delta.dx,
+        startRect.top,
+        startRect.right,
+        startRect.bottom + delta.dy,
+      ),
+    };
+
+    widget.onCropChanged(_clampCropRectForImage(next, widget.image));
+  }
+
+  void _clearDrag() {
+    _dragHandle = null;
+    _dragStartRect = null;
+    _dragStartPoint = null;
+  }
+
+  _CropDragHandle? _hitTestHandle(Rect rect, Offset position) {
+    final corners = <_CropDragHandle, Offset>{
+      _CropDragHandle.topLeft: rect.topLeft,
+      _CropDragHandle.topRight: rect.topRight,
+      _CropDragHandle.bottomRight: rect.bottomRight,
+      _CropDragHandle.bottomLeft: rect.bottomLeft,
+    };
+
+    for (final entry in corners.entries) {
+      if ((entry.value - position).distance <= _handleRadius) {
+        return entry.key;
+      }
+    }
+
+    final nearLeft = (position.dx - rect.left).abs() <= _handleRadius;
+    final nearRight = (position.dx - rect.right).abs() <= _handleRadius;
+    final nearTop = (position.dy - rect.top).abs() <= _handleRadius;
+    final nearBottom = (position.dy - rect.bottom).abs() <= _handleRadius;
+    final withinX = position.dx >= rect.left && position.dx <= rect.right;
+    final withinY = position.dy >= rect.top && position.dy <= rect.bottom;
+
+    if (nearLeft && withinY) return _CropDragHandle.left;
+    if (nearTop && withinX) return _CropDragHandle.top;
+    if (nearRight && withinY) return _CropDragHandle.right;
+    if (nearBottom && withinX) return _CropDragHandle.bottom;
+    if (rect.contains(position)) return _CropDragHandle.move;
+
+    return null;
+  }
+}
+
+class _CropOverlayPainter extends CustomPainter {
+  const _CropOverlayPainter({
+    required this.image,
+    required this.imageRect,
+    required this.cropRect,
+  });
+
+  final ui.Image image;
+  final Rect imageRect;
+  final Rect cropRect;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final displayCrop = _imageToDisplayRect(cropRect, imageRect, image);
+    final dimPath = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(imageRect)
+      ..addRect(displayCrop);
+    canvas.drawPath(dimPath, Paint()..color = const Color(0x77000000));
+
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.42)
+      ..strokeWidth = 1;
+    for (var index = 1; index <= 2; index += 1) {
+      final dx = displayCrop.left + displayCrop.width * index / 3;
+      final dy = displayCrop.top + displayCrop.height * index / 3;
+      canvas.drawLine(
+        Offset(dx, displayCrop.top),
+        Offset(dx, displayCrop.bottom),
+        gridPaint,
+      );
+      canvas.drawLine(
+        Offset(displayCrop.left, dy),
+        Offset(displayCrop.right, dy),
+        gridPaint,
+      );
+    }
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(displayCrop, const Radius.circular(8)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..color = redactKitAccentColor,
+    );
+
+    final handlePaint = Paint()..color = redactKitAccentColor;
+    for (final corner in <Offset>[
+      displayCrop.topLeft,
+      displayCrop.topRight,
+      displayCrop.bottomRight,
+      displayCrop.bottomLeft,
+    ]) {
+      canvas.drawCircle(corner, 6, Paint()..color = Colors.white);
+      canvas.drawCircle(corner, 4, handlePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) {
+    return oldDelegate.image != image ||
+        oldDelegate.imageRect != imageRect ||
+        oldDelegate.cropRect != cropRect;
+  }
+}
+
+Rect _imageToDisplayRect(Rect imageSpaceRect, Rect imageRect, ui.Image image) {
+  final scaleX = imageRect.width / image.width;
+  final scaleY = imageRect.height / image.height;
+
+  return Rect.fromLTRB(
+    imageRect.left + imageSpaceRect.left * scaleX,
+    imageRect.top + imageSpaceRect.top * scaleY,
+    imageRect.left + imageSpaceRect.right * scaleX,
+    imageRect.top + imageSpaceRect.bottom * scaleY,
+  );
+}
+
+Offset _displayToImagePoint(Offset local, Rect imageRect, ui.Image image) {
+  final x = ((local.dx - imageRect.left) * image.width / imageRect.width)
+      .clamp(0.0, image.width.toDouble())
+      .toDouble();
+  final y = ((local.dy - imageRect.top) * image.height / imageRect.height)
+      .clamp(0.0, image.height.toDouble())
+      .toDouble();
+  return Offset(x, y);
+}
+
+Rect _clampMovedCropRect(Rect rect, ui.Image image) {
+  final imageWidth = math.max(1.0, image.width.toDouble());
+  final imageHeight = math.max(1.0, image.height.toDouble());
+  final width = math.min(rect.width, imageWidth);
+  final height = math.min(rect.height, imageHeight);
+  final left = rect.left
+      .clamp(0.0, math.max(0.0, imageWidth - width))
+      .toDouble();
+  final top = rect.top
+      .clamp(0.0, math.max(0.0, imageHeight - height))
+      .toDouble();
+  return Rect.fromLTWH(left, top, width, height);
+}
+
+Rect _clampCropRectForImage(Rect rect, ui.Image image) {
+  final imageWidth = math.max(1.0, image.width.toDouble());
+  final imageHeight = math.max(1.0, image.height.toDouble());
+  final minSize = math.min(12.0, math.min(imageWidth, imageHeight));
+  final normalized = Rect.fromLTRB(
+    math.min(rect.left, rect.right),
+    math.min(rect.top, rect.bottom),
+    math.max(rect.left, rect.right),
+    math.max(rect.top, rect.bottom),
+  );
+
+  var left = normalized.left.clamp(0.0, imageWidth).toDouble();
+  var right = normalized.right.clamp(0.0, imageWidth).toDouble();
+  var top = normalized.top.clamp(0.0, imageHeight).toDouble();
+  var bottom = normalized.bottom.clamp(0.0, imageHeight).toDouble();
+
+  if (right - left < minSize) {
+    final centerX = ((left + right) / 2).clamp(0.0, imageWidth).toDouble();
+    left = (centerX - minSize / 2)
+        .clamp(0.0, math.max(0.0, imageWidth - minSize))
+        .toDouble();
+    right = math.min(imageWidth, left + minSize);
+  }
+
+  if (bottom - top < minSize) {
+    final centerY = ((top + bottom) / 2).clamp(0.0, imageHeight).toDouble();
+    top = (centerY - minSize / 2)
+        .clamp(0.0, math.max(0.0, imageHeight - minSize))
+        .toDouble();
+    bottom = math.min(imageHeight, top + minSize);
+  }
+
+  return Rect.fromLTRB(left, top, right, bottom);
+}
+
 class _RedactionPaintSurface extends StatelessWidget {
   const _RedactionPaintSurface({
     required this.state,
@@ -4664,12 +5163,16 @@ class _TopBar extends StatelessWidget {
     required this.canUndo,
     required this.canClear,
     required this.canExport,
+    required this.canCrop,
+    required this.isCropping,
     required this.isOpening,
     required this.isExporting,
     required this.onOpen,
     required this.onOpenPhotos,
     required this.onUndo,
     required this.onClear,
+    required this.onStartCrop,
+    required this.onCancelCrop,
     required this.onExport,
     required this.onShare,
     required this.onSaveToPhotos,
@@ -4682,12 +5185,16 @@ class _TopBar extends StatelessWidget {
   final bool canUndo;
   final bool canClear;
   final bool canExport;
+  final bool canCrop;
+  final bool isCropping;
   final bool isOpening;
   final bool isExporting;
   final VoidCallback onOpen;
   final VoidCallback onOpenPhotos;
   final VoidCallback onUndo;
   final VoidCallback onClear;
+  final VoidCallback onStartCrop;
+  final VoidCallback onCancelCrop;
   final VoidCallback onExport;
   final VoidCallback onShare;
   final VoidCallback onSaveToPhotos;
@@ -4757,6 +5264,21 @@ class _TopBar extends StatelessWidget {
                       onPressed: canClear ? onClear : null,
                       icon: const Icon(Icons.delete_outline),
                     ),
+                    if (mode == _WorkspaceMode.redact)
+                      _DesktopToolbarAction(
+                        message: isCropping
+                            ? context.l10n.cancelCrop
+                            : context.l10n.crop,
+                        onPressed: canCrop
+                            ? isCropping
+                                  ? onCancelCrop
+                                  : onStartCrop
+                            : null,
+                        icon: const Icon(Icons.crop),
+                        emphasis: isCropping
+                            ? _ToolbarEmphasis.tonal
+                            : _ToolbarEmphasis.plain,
+                      ),
                     const _ToolbarDivider(),
                     _DesktopToolbarAction(
                       message: context.l10n.saveToFiles,

@@ -230,6 +230,24 @@ abstract class AppLocalizations {
   /// **'Clear'**
   String get clear;
 
+  /// No description provided for @crop.
+  ///
+  /// In en, this message translates to:
+  /// **'Crop'**
+  String get crop;
+
+  /// No description provided for @cancelCrop.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancelCrop;
+
+  /// No description provided for @applyCrop.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get applyCrop;
+
   /// No description provided for @export.
   ///
   /// In en, this message translates to:
@@ -1105,6 +1123,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Loaded {width} x {height}px'**
   String statusLoadedImage(int width, int height);
+
+  /// No description provided for @statusAdjustingCrop.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust crop'**
+  String get statusAdjustingCrop;
+
+  /// No description provided for @statusCroppingImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Cropping image'**
+  String get statusCroppingImage;
+
+  /// No description provided for @statusImageCropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Cropped to {width} x {height}px'**
+  String statusImageCropped(int width, int height);
+
+  /// No description provided for @statusCropCanceled.
+  ///
+  /// In en, this message translates to:
+  /// **'Crop canceled'**
+  String get statusCropCanceled;
 
   /// No description provided for @statusPdfPage.
   ///

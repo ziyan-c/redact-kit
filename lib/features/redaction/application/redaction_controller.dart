@@ -115,6 +115,7 @@ class RedactionController extends _$RedactionController {
         draftRect: null,
         draftStart: null,
         draftColor: null,
+        cropRect: null,
         statusMessage: RedactionStatus.loadedPdf(
           pageNumber: 1,
           pageCount: _pdfDocument!.pagesCount,
@@ -176,6 +177,7 @@ class RedactionController extends _$RedactionController {
         draftRect: null,
         draftStart: null,
         draftColor: null,
+        cropRect: null,
         statusMessage: RedactionStatus.loadedImage(
           width: decoded.width,
           height: decoded.height,
@@ -758,7 +760,7 @@ class RedactionController extends _$RedactionController {
   }) async {
     final snapshot = state;
     final image = snapshot.image;
-    if (image == null || snapshot.isExporting) return;
+    if (image == null || snapshot.isExporting || snapshot.isCropping) return;
 
     state = state.copyWith(isExporting: true, statusMessage: progressStatus);
 
@@ -1620,8 +1622,112 @@ class RedactionController extends _$RedactionController {
     state = state.copyWith(preservePdfExportFileName: preserve);
   }
 
+  void startCrop() {
+    final image = state.image;
+    if (image == null || state.isOpening || state.isExporting) return;
+
+    finishRedaction();
+
+    final width = image.width.toDouble();
+    final height = image.height.toDouble();
+    final insetX = width <= 32 ? 0.0 : math.min(width * 0.08, width / 4);
+    final insetY = height <= 32 ? 0.0 : math.min(height * 0.08, height / 4);
+    final crop = _clampCropRect(
+      Rect.fromLTRB(insetX, insetY, width - insetX, height - insetY),
+      image,
+    );
+
+    state = state.copyWith(
+      cropRect: crop,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.adjustingCrop(),
+    );
+  }
+
+  void updateCrop(Rect rect) {
+    final image = state.image;
+    if (image == null || !state.isCropping) return;
+
+    state = state.copyWith(cropRect: _clampCropRect(rect, image));
+  }
+
+  void cancelCrop() {
+    if (!state.isCropping) return;
+
+    state = state.copyWith(
+      cropRect: null,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.cropCanceled(),
+    );
+  }
+
+  Future<void> applyCrop() async {
+    final image = state.image;
+    final crop = state.cropRect;
+    if (image == null || crop == null || state.isOpening || state.isExporting) {
+      return;
+    }
+
+    final source = _clampCropRect(crop, image);
+    final width = math.max(1, source.width.round());
+    final height = math.max(1, source.height.round());
+    ui.Image? croppedImage;
+
+    state = state.copyWith(
+      isOpening: true,
+      draftRect: null,
+      draftStart: null,
+      draftColor: null,
+      statusMessage: const RedactionStatus.croppingImage(),
+    );
+
+    try {
+      croppedImage = await _cropImage(
+        image: image,
+        sourceRect: source,
+        width: width,
+        height: height,
+      );
+      if (!ref.mounted) {
+        croppedImage.dispose();
+        croppedImage = null;
+        return;
+      }
+
+      final previous = _ownedImage;
+      final redactions = _redactionsForCrop(state.redactions, source);
+      _ownedImage = croppedImage;
+      croppedImage = null;
+
+      state = state.copyWith(
+        image: _ownedImage,
+        redactions: redactions,
+        cropRect: null,
+        statusMessage: RedactionStatus.imageCropped(
+          width: width,
+          height: height,
+        ),
+      );
+      previous?.dispose();
+    } catch (error) {
+      if (!ref.mounted) return;
+      state = state.copyWith(
+        statusMessage: RedactionStatus.couldNotOpenImage(_friendlyError(error)),
+      );
+    } finally {
+      croppedImage?.dispose();
+      if (ref.mounted) {
+        state = state.copyWith(isOpening: false);
+      }
+    }
+  }
+
   void undo() {
-    if (state.redactions.isEmpty) return;
+    if (state.isCropping || state.redactions.isEmpty) return;
 
     final redactions = state.redactions.toList()..removeLast();
     state = state.copyWith(
@@ -1633,6 +1739,7 @@ class RedactionController extends _$RedactionController {
   }
 
   void clear() {
+    if (state.isCropping) return;
     if (state.redactions.isEmpty && state.draftRect == null) return;
 
     state = state.copyWith(
@@ -1695,7 +1802,11 @@ class RedactionController extends _$RedactionController {
     Offset localPosition,
     Rect imageRect,
   ) {
-    if (image == null || !imageRect.contains(localPosition)) return;
+    if (image == null ||
+        state.isCropping ||
+        !imageRect.contains(localPosition)) {
+      return;
+    }
 
     final point = _toImagePoint(localPosition, imageRect, image);
     state = state.copyWith(
@@ -1801,6 +1912,89 @@ class RedactionController extends _$RedactionController {
       math.max(rect.left, rect.right),
       math.max(rect.top, rect.bottom),
     );
+  }
+
+  Rect _clampCropRect(Rect rect, ui.Image image) {
+    final imageWidth = math.max(1.0, image.width.toDouble());
+    final imageHeight = math.max(1.0, image.height.toDouble());
+    final minSize = math.min(12.0, math.min(imageWidth, imageHeight));
+    final normalized = _normalizeRect(rect);
+
+    var left = normalized.left.clamp(0.0, imageWidth).toDouble();
+    var right = normalized.right.clamp(0.0, imageWidth).toDouble();
+    var top = normalized.top.clamp(0.0, imageHeight).toDouble();
+    var bottom = normalized.bottom.clamp(0.0, imageHeight).toDouble();
+
+    if (right - left < minSize) {
+      final centerX = ((left + right) / 2).clamp(0.0, imageWidth).toDouble();
+      left = (centerX - minSize / 2)
+          .clamp(0.0, math.max(0.0, imageWidth - minSize))
+          .toDouble();
+      right = math.min(imageWidth, left + minSize);
+    }
+
+    if (bottom - top < minSize) {
+      final centerY = ((top + bottom) / 2).clamp(0.0, imageHeight).toDouble();
+      top = (centerY - minSize / 2)
+          .clamp(0.0, math.max(0.0, imageHeight - minSize))
+          .toDouble();
+      bottom = math.min(imageHeight, top + minSize);
+    }
+
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Future<ui.Image> _cropImage({
+    required ui.Image image,
+    required Rect sourceRect,
+    required int width,
+    required int height,
+  }) async {
+    ui.Picture? picture;
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawImageRect(
+        image,
+        sourceRect,
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..filterQuality = FilterQuality.high,
+      );
+      picture = recorder.endRecording();
+      return await picture.toImage(width, height);
+    } finally {
+      picture?.dispose();
+    }
+  }
+
+  List<RedactionRegion> _redactionsForCrop(
+    List<RedactionRegion> redactions,
+    Rect crop,
+  ) {
+    if (redactions.isEmpty) return redactions;
+
+    final next = <RedactionRegion>[];
+    for (final redaction in redactions) {
+      final rect = _normalizeRect(redaction.rect);
+      final left = math.max(rect.left, crop.left);
+      final top = math.max(rect.top, crop.top);
+      final right = math.min(rect.right, crop.right);
+      final bottom = math.min(rect.bottom, crop.bottom);
+      if (right - left < 3 || bottom - top < 3) continue;
+
+      next.add(
+        RedactionRegion(
+          rect: Rect.fromLTRB(
+            left - crop.left,
+            top - crop.top,
+            right - crop.left,
+            bottom - crop.top,
+          ),
+          color: redaction.color,
+        ),
+      );
+    }
+    return next;
   }
 }
 

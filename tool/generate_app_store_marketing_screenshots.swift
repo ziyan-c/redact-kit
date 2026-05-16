@@ -15,6 +15,7 @@ struct Slide {
 
 struct LanguageSet {
     let name: String
+    let sourceSubdirectory: String?
     let outputSubdirectory: String?
     let slides: [Slide]
 }
@@ -105,8 +106,8 @@ let chineseSlides = [
 ]
 
 let languageSets = [
-    LanguageSet(name: "English", outputSubdirectory: nil, slides: englishSlides),
-    LanguageSet(name: "Chinese", outputSubdirectory: "zh-Hans", slides: chineseSlides),
+    LanguageSet(name: "English", sourceSubdirectory: nil, outputSubdirectory: nil, slides: englishSlides),
+    LanguageSet(name: "Chinese", sourceSubdirectory: "zh-Hans", outputSubdirectory: "zh-Hans", slides: chineseSlides),
 ]
 
 let targetSets = [
@@ -153,6 +154,9 @@ let surfaceSoft = NSColor(hex: 0xF4F4F4)
 let white = NSColor.white
 
 for languageSet in languageSets {
+    let localizedSourceRoot = languageSet.sourceSubdirectory.map {
+        sourceRoot.appendingPathComponent($0)
+    } ?? sourceRoot
     let localizedOutputRoot = languageSet.outputSubdirectory.map {
         outputRoot.appendingPathComponent($0)
     } ?? outputRoot
@@ -162,9 +166,15 @@ for languageSet in languageSets {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
         for slide in languageSet.slides {
-            let sourceURL = sourceRoot
+            let localizedSourceURL = localizedSourceRoot
                 .appendingPathComponent(target.sourceDirectory)
                 .appendingPathComponent(slide.sourceName)
+            let fallbackSourceURL = sourceRoot
+                .appendingPathComponent(target.sourceDirectory)
+                .appendingPathComponent(slide.sourceName)
+            let sourceURL = FileManager.default.fileExists(atPath: localizedSourceURL.path)
+                ? localizedSourceURL
+                : fallbackSourceURL
             let source = try loadSource(sourceURL)
             let image = render(slide: slide, source: source, target: target)
             let outputURL = outputDirectory.appendingPathComponent(slide.fileName)

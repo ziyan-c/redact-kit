@@ -27,6 +27,9 @@
   "photos": "Photos",
   "undo": "Undo",
   "clear": "Clear",
+  "crop": "Crop",
+  "cancelCrop": "Cancel",
+  "applyCrop": "Apply",
   "export": "Export",
   "save": "Save",
   "share": "Share",
@@ -261,6 +264,16 @@
       "height": { "type": "int" }
     }
   },
+  "statusAdjustingCrop": "Adjust crop",
+  "statusCroppingImage": "Cropping image",
+  "statusImageCropped": "Cropped to {width} x {height}px",
+  "@statusImageCropped": {
+    "placeholders": {
+      "width": { "type": "int" },
+      "height": { "type": "int" }
+    }
+  },
+  "statusCropCanceled": "Crop canceled",
   "statusPdfPage": "PDF page {pageNumber} of {pageCount}",
   "@statusPdfPage": {
     "placeholders": {

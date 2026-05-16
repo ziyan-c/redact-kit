@@ -30,6 +30,7 @@ abstract class RedactionState with _$RedactionState {
     Offset? draftStart,
     Rect? draftRect,
     Color? draftColor,
+    Rect? cropRect,
     @Default(false) bool isOpening,
     @Default(false) bool isExporting,
     @Default(ExportFormat.jpeg) ExportFormat exportFormat,
@@ -49,6 +50,7 @@ abstract class RedactionState with _$RedactionState {
   }) = _RedactionState;
 
   bool get hasImage => image != null;
+  bool get isCropping => cropRect != null;
   String get status => statusMessage.fallbackMessage;
   bool get hasRedactions => redactions.isNotEmpty;
   bool get hasPdf => pdfPageImage != null && pdfPageCount > 0;

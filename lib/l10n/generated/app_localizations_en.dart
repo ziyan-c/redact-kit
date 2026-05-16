@@ -78,6 +78,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clear => 'Clear';
 
   @override
+  String get crop => 'Crop';
+
+  @override
+  String get cancelCrop => 'Cancel';
+
+  @override
+  String get applyCrop => 'Apply';
+
+  @override
   String get export => 'Export';
 
   @override
@@ -622,6 +631,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String statusLoadedImage(int width, int height) {
     return 'Loaded $width x ${height}px';
   }
+
+  @override
+  String get statusAdjustingCrop => 'Adjust crop';
+
+  @override
+  String get statusCroppingImage => 'Cropping image';
+
+  @override
+  String statusImageCropped(int width, int height) {
+    return 'Cropped to $width x ${height}px';
+  }
+
+  @override
+  String get statusCropCanceled => 'Crop canceled';
 
   @override
   String statusPdfPage(int pageNumber, int pageCount) {
