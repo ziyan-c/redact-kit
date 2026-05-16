@@ -69,7 +69,7 @@ class RedactionPainter extends CustomPainter {
   void _paintGrid(Canvas canvas, Size size) {
     const spacing = 32.0;
     final paint = Paint()
-      ..color = const Color(0x10176B5B)
+      ..color = const Color(0x10494FDF)
       ..strokeWidth = 1;
 
     for (double x = 0; x <= size.width; x += spacing) {

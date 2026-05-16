@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -291,13 +292,13 @@ class _CompletionNoticeCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x26000000),
-            blurRadius: 22,
-            offset: Offset(0, 10),
+            color: redactKitChromeShadowColor,
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -308,7 +309,7 @@ class _CompletionNoticeCard extends StatelessWidget {
             DecoratedBox(
               decoration: BoxDecoration(
                 color: background,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: SizedBox.square(
                 dimension: 38,
@@ -328,7 +329,7 @@ class _CompletionNoticeCard extends StatelessWidget {
                     style: const TextStyle(
                       color: redactKitPrimaryTextColor,
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -340,7 +341,7 @@ class _CompletionNoticeCard extends StatelessWidget {
                       color: redactKitMutedTextColor,
                       fontSize: 12,
                       height: 1.25,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -426,6 +427,7 @@ class _DesktopLayout extends ConsumerWidget {
                       openLabel: 'Files',
                       fitPadding: 28,
                       showPhotoButton: true,
+                      enablePanZoom: true,
                       compactEmptyState: true,
                     ),
                   ),
@@ -459,6 +461,7 @@ class _DesktopLayout extends ConsumerWidget {
                       emptyTitle: 'Choose a PDF',
                       openLabel: 'Files',
                       fitPadding: 28,
+                      enablePanZoom: true,
                       compactEmptyState: true,
                     ),
                   ),
@@ -785,7 +788,7 @@ class _TabletTopBar extends StatelessWidget {
                 const Text(
                   'Redact Kit',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -793,7 +796,7 @@ class _TabletTopBar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: redactKitMutedTextColor,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -830,7 +833,7 @@ class _TabletTopBar extends StatelessWidget {
                 tooltip: 'Save to Photos',
                 onPressed: canExport ? onSaveToPhotos : null,
                 icon: const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
-                filled: true,
+                tonal: true,
               ),
               _TopBarIconButton(
                 tooltip: 'Share',
@@ -1015,7 +1018,7 @@ class _CupertinoSegmentedControl<T extends Object> extends StatelessWidget {
       child: CupertinoSlidingSegmentedControl<T>(
         groupValue: selected,
         padding: const EdgeInsets.all(2),
-        backgroundColor: redactKitDisabledFillColor,
+        backgroundColor: redactKitControlFillColor,
         thumbColor: Colors.white,
         children: <T, Widget>{
           for (final value in values)
@@ -1070,7 +1073,7 @@ class _CupertinoSegmentContent extends StatelessWidget {
             style: TextStyle(
               color: color,
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -1097,23 +1100,23 @@ class _CupertinoActionButton extends StatelessWidget {
     final enabled = onPressed != null;
     final foreground = enabled
         ? switch (emphasis) {
-            _CupertinoControlEmphasis.filled => redactKitAccentColor,
+            _CupertinoControlEmphasis.filled => Colors.white,
             _ => redactKitAccentColor,
           }
         : redactKitDisabledColor;
     final background = switch (emphasis) {
       _CupertinoControlEmphasis.filled =>
-        enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
+        enabled ? redactKitAccentColor : redactKitDisabledFillColor,
       _CupertinoControlEmphasis.tonal =>
         enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
       _CupertinoControlEmphasis.outlined => redactKitSecondaryBackgroundColor,
     };
     final borderColor = switch (emphasis) {
       _CupertinoControlEmphasis.filled =>
-        enabled ? redactKitAccentBorderColor : redactKitSubtleBorderColor,
+        enabled ? redactKitAccentColor : redactKitSubtleBorderColor,
       _CupertinoControlEmphasis.tonal => Colors.transparent,
       _CupertinoControlEmphasis.outlined =>
-        enabled ? redactKitSubtleBorderColor : redactKitSubtleBorderColor,
+        enabled ? redactKitAccentBorderColor : redactKitSubtleBorderColor,
     };
 
     return LayoutBuilder(
@@ -1124,13 +1127,13 @@ class _CupertinoActionButton extends StatelessWidget {
           onPressed: onPressed,
           child: Container(
             constraints: BoxConstraints(
-              minHeight: 40,
+              minHeight: 44,
               minWidth: constraints.hasBoundedWidth ? constraints.maxWidth : 0,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             decoration: BoxDecoration(
               color: background,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(999),
               border: Border.all(color: borderColor),
             ),
             child: IconTheme.merge(
@@ -1138,7 +1141,8 @@ class _CupertinoActionButton extends StatelessWidget {
               child: DefaultTextStyle.merge(
                 style: TextStyle(
                   color: foreground,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1194,9 +1198,11 @@ class _CupertinoIconControl extends StatelessWidget {
         enabled ? redactKitAccentFillColor : redactKitDisabledFillColor,
       _CupertinoControlEmphasis.outlined => redactKitSecondaryBackgroundColor,
     };
-    final borderColor = emphasis == _CupertinoControlEmphasis.outlined
-        ? redactKitSubtleBorderColor
-        : Colors.transparent;
+    final borderColor = switch (emphasis) {
+      _CupertinoControlEmphasis.filled => Colors.transparent,
+      _CupertinoControlEmphasis.tonal => Colors.transparent,
+      _CupertinoControlEmphasis.outlined => redactKitBorderColor,
+    };
 
     return CupertinoButton(
       padding: EdgeInsets.zero,
@@ -1208,7 +1214,7 @@ class _CupertinoIconControl extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(color: borderColor),
         ),
         child: IconTheme.merge(
@@ -1358,7 +1364,7 @@ class _PdfPageNumberFieldState extends State<_PdfPageNumberField> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: redactKitSubtleBorderColor),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       onSubmitted: _submit,
     );
@@ -1488,7 +1494,7 @@ class _MobileTopBar extends StatelessWidget {
                 const Text(
                   'Redact Kit',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -1500,7 +1506,7 @@ class _MobileTopBar extends StatelessWidget {
                         style: const TextStyle(
                           color: redactKitMutedTextColor,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1546,7 +1552,7 @@ class _StatusPill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: redactKitDisabledFillColor,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -1557,7 +1563,7 @@ class _StatusPill extends StatelessWidget {
           style: const TextStyle(
             color: redactKitMutedTextColor,
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),
@@ -1598,13 +1604,6 @@ class _MobileBottomBar extends StatelessWidget {
       decoration: const BoxDecoration(
         color: redactKitSecondaryBackgroundColor,
         border: Border(top: BorderSide(color: redactKitSubtleBorderColor)),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Color(0x0D000000),
-            blurRadius: 14,
-            offset: Offset(0, -4),
-          ),
-        ],
       ),
       child: Row(
         children: <Widget>[
@@ -1679,7 +1678,7 @@ class _MobileToolbarItem extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 48, minHeight: 56),
             decoration: BoxDecoration(
               color: background,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: IconTheme.merge(
               data: IconThemeData(color: foreground, size: 21),
@@ -1698,7 +1697,7 @@ class _MobileToolbarItem extends StatelessWidget {
                         maxLines: 1,
                         style: const TextStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1742,7 +1741,7 @@ void _showExportSheet(BuildContext context) {
                             'Export',
                             style: TextStyle(
                               fontSize: 20,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -1824,7 +1823,9 @@ void _showExportSheet(BuildContext context) {
                             icon: state.isExporting
                                 ? const SizedBox.square(
                                     dimension: 18,
-                                    child: CupertinoActivityIndicator(),
+                                    child: CupertinoActivityIndicator(
+                                      color: Colors.white,
+                                    ),
                                   )
                                 : const Icon(Icons.save_alt),
                             label: 'Save to Files',
@@ -1899,7 +1900,7 @@ void _showPdfExportSheet(BuildContext context) {
                           'PDF Export',
                           style: TextStyle(
                             fontSize: 20,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -1973,7 +1974,9 @@ void _showPdfExportSheet(BuildContext context) {
                           icon: state.isExporting
                               ? const SizedBox.square(
                                   dimension: 18,
-                                  child: CupertinoActivityIndicator(),
+                                  child: CupertinoActivityIndicator(
+                                    color: Colors.white,
+                                  ),
                                 )
                               : const Icon(Icons.save_alt),
                           label: 'Save Redacted PDF',
@@ -1997,35 +2000,18 @@ void _showRedactDetails(BuildContext context) {
     context,
     title: 'Image Privacy',
     children: const <Widget>[
+      _pixelLevelRedactionPoint,
       _PrivacyPoint(
-        icon: Icons.grid_on_outlined,
-        title: 'Pixel-level redaction',
-        body:
-            'Redaction boxes are burned into the raster as 100% opaque solid pixels. The exported image has no editable layer, hidden mask, or original pixels under the box.',
-      ),
-      _PrivacyPoint(
-        icon: Icons.auto_fix_high_outlined,
-        title: 'Rebuilt from visible pixels',
-        body:
-            'Export creates a new PNG or JPEG from the rendered pixel buffer. It does not copy the original file container forward.',
-      ),
-      _PrivacyPoint(
-        icon: Icons.cleaning_services_outlined,
+        icon: _metadataRemovedIcon,
         title: 'Metadata removed',
         body:
-            'Image export always rebuilds the image and removes metadata. PNG keeps pixel, transparency, and standard color-rendering chunks. JPEG removes APP0-APP15 and COM segments.',
+            'Exports remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, comments, and other hidden image metadata.',
       ),
       _PrivacyPoint(
-        icon: Icons.badge_outlined,
-        title: 'File names',
+        icon: _outputFormatIcon,
+        title: 'Output format',
         body:
-            'Exports start with a generic name. The Keep filename option only preserves the visible file name, not image metadata.',
-      ),
-      _PrivacyPoint(
-        icon: CupertinoIcons.slider_horizontal_3,
-        title: 'Format choice',
-        body:
-            'PNG keeps redaction pixels exact. JPEG makes smaller files and may slightly soften edges, but it cannot restore pixels that were already replaced. Just make sure the box fully covers the sensitive area.',
+            'PNG is lossless. JPEG is smaller and may soften edges. Both are written as fresh files without original metadata.',
       ),
     ],
   );
@@ -2036,29 +2022,38 @@ void _showPdfDetails(BuildContext context) {
     context,
     title: 'PDF Privacy',
     children: const <Widget>[
-      _PrivacyPoint(
-        icon: Icons.picture_as_pdf_outlined,
-        title: 'Flattened PDF export',
-        body:
-            'Each PDF page is rendered as an image, redaction boxes are burned into that image, and a new PDF is generated from the cleaned pages. The exported page size follows the original PDF page size.',
-      ),
+      _pixelLevelRedactionPoint,
       _PrivacyPoint(
         icon: Icons.layers_clear_outlined,
-        title: 'Original PDF structure removed',
+        title: 'Hidden PDF data is removed',
         body:
-            'The clean PDF does not copy the original text layer, annotations, forms, links, embedded files, hidden OCR text, or original document metadata.',
+            'The export drops original text layers, annotations, forms, links, attachments, OCR text, and document metadata.',
       ),
       _PrivacyPoint(
-        icon: Icons.cleaning_services_outlined,
-        title: 'Metadata-only PDFs',
+        icon: _metadataRemovedIcon,
+        title: 'Metadata removed',
         body:
-            'Metadata Only can flatten one PDF without drawing boxes. It removes original PDF metadata and hidden document structure, but text selection and search are not preserved.',
+            'The clean PDF is written without the original title, author, creator, producer, dates, keywords, trailer ID, or XMP metadata.',
       ),
       _PrivacyPoint(
-        icon: Icons.search_off_outlined,
+        icon: Icons.picture_as_pdf_outlined,
+        title: 'Flatten redacted pages',
+        body:
+            'Each page is rendered as an image. Redaction boxes are burned in, then a new PDF is built at the original page size.',
+      ),
+      _PrivacyPoint(
+        icon: _outputFormatIcon,
+        title: 'Output',
+        body:
+            'The exported PDF keeps the original page size and uses the selected PDF quality setting.',
+      ),
+      _PrivacyPoint(
+        icon: _noteIcon,
+        iconBackgroundColor: _noteBackgroundColor,
+        iconColor: _noteIconColor,
         title: 'Tradeoff',
         body:
-            'Flattened PDFs are safer and simpler to verify, but the exported document behaves like scanned pages. Text outside redactions is visible, but not selectable or searchable.',
+            'Flattened PDFs are safer to verify, but text is no longer selectable or searchable.',
       ),
     ],
   );
@@ -2071,37 +2066,46 @@ void _showMetadataDetails(BuildContext context) {
     children: const <Widget>[
       _PrivacyPoint(
         icon: Icons.photo_library_outlined,
-        title: 'Image and PDF input',
+        title: 'Clean without redaction',
         body:
-            'Choose files or a folder from one input button. Files can be images or PDFs, and folder input scans supported images and PDFs inside it. This mode does not draw redaction boxes.',
+            'Pick images, PDFs, Photos, or one folder. This mode removes hidden metadata without drawing boxes.',
       ),
       _PrivacyPoint(
-        icon: Icons.auto_fix_high_outlined,
-        title: 'Fast clean path',
-        body:
-            'PNG-to-PNG outputs strip metadata directly from a copied file container. JPEG-to-JPEG does the same unless EXIF orientation must be baked into pixels. Format changes decode visible pixels and encode a fresh clean file.',
-      ),
-      _PrivacyPoint(
-        icon: Icons.cleaning_services_outlined,
+        icon: _metadataRemovedIcon,
         title: 'Metadata removed',
         body:
-            'PNG output keeps pixel, transparency, and standard color-rendering chunks. JPEG output removes APP0-APP15 and COM segments, covering EXIF, GPS, IPTC, XMP, thumbnails, and comments.',
+            'Images remove EXIF, GPS, camera details, thumbnails, XMP/IPTC, and comments. PDFs are rebuilt without original document metadata or hidden structure.',
       ),
       _PrivacyPoint(
-        icon: Icons.drive_file_rename_outline,
-        title: 'File names',
-        body:
-            'Generic names are used unless Keep filenames is enabled. Preserved names are sanitized and deduplicated inside the output folder.',
-      ),
-      _PrivacyPoint(
-        icon: Icons.folder_copy_outlined,
+        icon: _outputFormatIcon,
         title: 'Output',
         body:
-            'Images and PDFs save into the app Cleaned folder unless you choose another output folder. Folder input creates a Cleaned subfolder named with -metadata-removed.',
+            'Save to the app Cleaned folder, choose another folder, or save image-only results to Photos.',
+      ),
+      _PrivacyPoint(
+        icon: _noteIcon,
+        iconBackgroundColor: _noteBackgroundColor,
+        iconColor: _noteIconColor,
+        title: 'Note',
+        body:
+            'Metadata-only does not hide visible text or pixels. Use Image or PDF mode when private content is visible on the page.',
       ),
     ],
   );
 }
+
+const IconData _metadataRemovedIcon = Icons.cleaning_services_outlined;
+const IconData _outputFormatIcon = CupertinoIcons.slider_horizontal_3;
+const IconData _noteIcon = CupertinoIcons.exclamationmark_circle;
+const Color _noteBackgroundColor = Color(0xFFFFF4D6);
+const Color _noteIconColor = Color(0xFF9A6A00);
+
+const _pixelLevelRedactionPoint = _PrivacyPoint(
+  icon: Icons.grid_on_outlined,
+  title: 'Pixel-level redaction',
+  body:
+      'Redaction boxes are burned into exported pixels. There is no editable layer or hidden content under the covered area.',
+);
 
 void _showDetails(
   BuildContext context, {
@@ -2172,7 +2176,7 @@ class _InfoDetailsSheet extends StatelessWidget {
                       style: const TextStyle(
                         color: redactKitPrimaryTextColor,
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -2256,20 +2260,40 @@ class _PrivacyPoint extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
+    this.iconColor = redactKitAccentColor,
+    this.iconBackgroundColor,
   });
 
   final IconData icon;
   final String title;
   final String body;
+  final Color iconColor;
+  final Color? iconBackgroundColor;
 
   @override
   Widget build(BuildContext context) {
+    final iconWidget = Icon(icon, color: iconColor, size: 22);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, color: redactKitAccentColor, size: 24),
+          if (iconBackgroundColor case final background?)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SizedBox.square(
+                dimension: 30,
+                child: Center(child: iconWidget),
+              ),
+            )
+          else
+            SizedBox.square(
+              dimension: 30,
+              child: Align(alignment: Alignment.topLeft, child: iconWidget),
+            ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2279,7 +2303,7 @@ class _PrivacyPoint extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -2449,7 +2473,7 @@ class _DesktopMetadataCleanerView extends StatelessWidget {
                             'Metadata Only',
                             style: TextStyle(
                               fontSize: 26,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           SizedBox(height: 5),
@@ -2673,15 +2697,8 @@ class _DesktopMetadataPanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: redactKitSecondaryBackgroundColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2696,7 +2713,7 @@ class _DesktopMetadataPanel extends StatelessWidget {
                   style: const TextStyle(
                     color: redactKitPrimaryTextColor,
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -2730,13 +2747,11 @@ class _MetadataInputChooserButton extends StatelessWidget {
     final enabled = onPressed != null;
     final content = Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 86),
-      padding: const EdgeInsets.all(14),
+      constraints: const BoxConstraints(minHeight: 78),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: enabled
-            ? redactKitInputActionFillColor
-            : redactKitDisabledFillColor,
-        borderRadius: BorderRadius.circular(8),
+        color: redactKitSecondaryBackgroundColor,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: enabled
               ? redactKitInputActionBorderColor
@@ -2748,9 +2763,9 @@ class _MetadataInputChooserButton extends StatelessWidget {
           DecoratedBox(
             decoration: BoxDecoration(
               color: enabled
-                  ? redactKitSecondaryBackgroundColor
+                  ? redactKitAccentFillColor
                   : redactKitDisabledFillColor,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: enabled
                     ? redactKitInputActionBorderColor
@@ -2790,7 +2805,7 @@ class _MetadataInputChooserButton extends StatelessWidget {
                         ? redactKitInputActionTextColor
                         : redactKitDisabledColor,
                     fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -2800,7 +2815,7 @@ class _MetadataInputChooserButton extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: redactKitMutedTextColor,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w400,
                     height: 1.25,
                   ),
                 ),
@@ -2928,7 +2943,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitBorderColor),
       ),
       child: Column(
@@ -2939,7 +2954,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
               DecoratedBox(
                 decoration: BoxDecoration(
                   color: background,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: SizedBox.square(
                   dimension: 34,
@@ -2960,7 +2975,7 @@ class _MetadataResultSummaryCard extends StatelessWidget {
                   result.title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -3046,7 +3061,7 @@ class _ResultCountPill extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: redactKitGroupedFillColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
       ),
       child: Padding(
@@ -3058,7 +3073,7 @@ class _ResultCountPill extends StatelessWidget {
               value,
               style: const TextStyle(
                 color: redactKitPrimaryTextColor,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(width: 5),
@@ -3067,7 +3082,7 @@ class _ResultCountPill extends StatelessWidget {
               style: const TextStyle(
                 color: redactKitMutedTextColor,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -3117,7 +3132,7 @@ class _MobileMetadataCleanerView extends StatelessWidget {
                 const Expanded(
                   child: Text(
                     'Metadata Only',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
                   ),
                 ),
                 _StatusPill(
@@ -3288,7 +3303,7 @@ class _MobileMetadataSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: redactKitSecondaryBackgroundColor,
         border: Border.all(color: redactKitSubtleBorderColor),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3302,7 +3317,7 @@ class _MobileMetadataSection extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -3330,7 +3345,7 @@ class _MetadataProgressBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
         color: redactKitSecondaryBackgroundColor,
       ),
@@ -3341,7 +3356,7 @@ class _MetadataProgressBanner extends StatelessWidget {
             status,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            style: const TextStyle(fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 10),
           _CupertinoProgressBar(value: clampedProgress),
@@ -3453,7 +3468,7 @@ class _MetadataInputRow extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 54),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
         color: selected ? Colors.white : redactKitGroupedFillColor,
       ),
@@ -3474,7 +3489,7 @@ class _MetadataInputRow extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -3547,7 +3562,7 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: redactKitSubtleBorderColor),
                 color: redactKitGroupedFillColor,
               ),
@@ -3557,7 +3572,7 @@ class _MetadataOutputFolderPicker extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: redactKitMutedTextColor,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ),
@@ -3615,7 +3630,7 @@ class _MetadataDestinationActions extends StatelessWidget {
       icon: isExporting && !savingToPhotos
           ? const SizedBox.square(
               dimension: 18,
-              child: CupertinoActivityIndicator(),
+              child: CupertinoActivityIndicator(color: Colors.white),
             )
           : const Icon(Icons.save_alt),
       label: 'Save to Files',
@@ -3638,7 +3653,7 @@ class _MetadataDestinationActions extends StatelessWidget {
             icon: isExporting && savingToPhotos
                 ? const SizedBox.square(
                     dimension: 18,
-                    child: CupertinoActivityIndicator(),
+                    child: CupertinoActivityIndicator(color: Colors.white),
                   )
                 : const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
             label: 'Save to Photos',
@@ -3674,7 +3689,7 @@ void _showMetadataOutputDetails(
                       'Full Output',
                       style: TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -3700,7 +3715,7 @@ void _showMetadataOutputDetails(
                   output,
                   style: const TextStyle(
                     color: redactKitPrimaryTextColor,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -3708,7 +3723,7 @@ void _showMetadataOutputDetails(
                 const SizedBox(height: 12),
                 const Text(
                   'Folder Path',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -3722,7 +3737,7 @@ void _showMetadataOutputDetails(
                     path,
                     style: const TextStyle(
                       color: redactKitPrimaryTextColor,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -3930,7 +3945,7 @@ class _MobileCanvasEmptyState extends StatelessWidget {
             DecoratedBox(
               decoration: BoxDecoration(
                 color: redactKitGroupedFillColor,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: redactKitSubtleBorderColor),
               ),
               child: const SizedBox.square(
@@ -3949,7 +3964,7 @@ class _MobileCanvasEmptyState extends StatelessWidget {
               style: const TextStyle(
                 color: redactKitPrimaryTextColor,
                 fontSize: 21,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 20),
@@ -4009,7 +4024,7 @@ class _SourceActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: background,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
           ),
           child: IconTheme.merge(
@@ -4018,7 +4033,7 @@ class _SourceActionButton extends StatelessWidget {
               style: TextStyle(
                 color: foreground,
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -4115,12 +4130,12 @@ class _ZoomableRedactionCanvas extends StatefulWidget {
 class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
   static const double _minScale = 1;
   static const double _maxScale = 6;
+  static const double _pointerZoomStep = 0.0018;
 
   double _scale = _minScale;
   double _gestureStartScale = _minScale;
   Offset _offset = Offset.zero;
   Offset _gestureStartOffset = Offset.zero;
-  Offset _gestureStartFocalPoint = Offset.zero;
   _CanvasGestureMode? _gestureMode;
 
   @override
@@ -4131,7 +4146,6 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
       _gestureStartScale = _minScale;
       _offset = Offset.zero;
       _gestureStartOffset = Offset.zero;
-      _gestureStartFocalPoint = Offset.zero;
       _gestureMode = null;
     }
   }
@@ -4140,78 +4154,71 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
   Widget build(BuildContext context) {
     final effectiveOffset = _clampOffset(_offset, _scale, widget.canvasSize);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onScaleStart: (details) {
-        _gestureStartScale = _scale;
-        _gestureStartOffset = effectiveOffset;
-        _gestureStartFocalPoint = details.localFocalPoint;
+    return Listener(
+      onPointerSignal: (event) => _handlePointerSignal(event, effectiveOffset),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onScaleStart: (details) {
+          _gestureStartScale = _scale;
+          _gestureStartOffset = effectiveOffset;
 
-        if (details.pointerCount >= 2) {
-          _gestureMode = _CanvasGestureMode.zoom;
-          widget.onFinishRedaction();
-          return;
-        }
-
-        _gestureMode = _CanvasGestureMode.draw;
-        widget.onBeginRedaction(
-          _toCanvasPoint(details.localFocalPoint, effectiveOffset),
-          widget.imageRect,
-        );
-      },
-      onScaleUpdate: (details) {
-        if (details.pointerCount >= 2) {
-          if (_gestureMode != _CanvasGestureMode.zoom) {
+          if (details.pointerCount >= 2) {
             _gestureMode = _CanvasGestureMode.zoom;
             widget.onFinishRedaction();
-            _gestureStartScale = _scale;
-            _gestureStartOffset = effectiveOffset;
-            _gestureStartFocalPoint = details.localFocalPoint;
+            return;
           }
 
-          final nextScale = (_gestureStartScale * details.scale).clamp(
-            _minScale,
-            _maxScale,
-          );
-          final focalCanvasPoint =
-              (_gestureStartFocalPoint - _gestureStartOffset) /
-              _gestureStartScale;
-          final nextOffset =
-              details.localFocalPoint - focalCanvasPoint * nextScale;
-
-          setState(() {
-            _scale = nextScale;
-            _offset = _clampOffset(nextOffset, nextScale, widget.canvasSize);
-          });
-          return;
-        }
-
-        if (_gestureMode == _CanvasGestureMode.draw) {
-          widget.onUpdateRedaction(
+          _gestureMode = _CanvasGestureMode.draw;
+          widget.onBeginRedaction(
             _toCanvasPoint(details.localFocalPoint, effectiveOffset),
             widget.imageRect,
           );
-        }
-      },
-      onScaleEnd: (_) {
-        if (_gestureMode == _CanvasGestureMode.draw) {
-          widget.onFinishRedaction();
-        }
-        _gestureMode = null;
-      },
-      child: ClipRect(
-        child: Transform.translate(
-          offset: effectiveOffset,
-          child: Transform.scale(
-            scale: _scale,
-            alignment: Alignment.topLeft,
-            child: SizedBox.fromSize(
-              size: widget.canvasSize,
-              child: _RedactionPaintSurface(
-                state: widget.state,
-                image: widget.image,
-                imageRect: widget.imageRect,
-                redactions: widget.redactions,
+        },
+        onScaleUpdate: (details) {
+          if (details.pointerCount >= 2) {
+            if (_gestureMode != _CanvasGestureMode.zoom) {
+              _gestureMode = _CanvasGestureMode.zoom;
+              widget.onFinishRedaction();
+              _gestureStartScale = _scale;
+              _gestureStartOffset = effectiveOffset;
+            }
+
+            _setScaleAround(
+              scale: _gestureStartScale * details.scale,
+              focalPoint: details.localFocalPoint,
+              currentOffset: _gestureStartOffset,
+              currentScale: _gestureStartScale,
+            );
+            return;
+          }
+
+          if (_gestureMode == _CanvasGestureMode.draw) {
+            widget.onUpdateRedaction(
+              _toCanvasPoint(details.localFocalPoint, effectiveOffset),
+              widget.imageRect,
+            );
+          }
+        },
+        onScaleEnd: (_) {
+          if (_gestureMode == _CanvasGestureMode.draw) {
+            widget.onFinishRedaction();
+          }
+          _gestureMode = null;
+        },
+        child: ClipRect(
+          child: Transform.translate(
+            offset: effectiveOffset,
+            child: Transform.scale(
+              scale: _scale,
+              alignment: Alignment.topLeft,
+              child: SizedBox.fromSize(
+                size: widget.canvasSize,
+                child: _RedactionPaintSurface(
+                  state: widget.state,
+                  image: widget.image,
+                  imageRect: widget.imageRect,
+                  redactions: widget.redactions,
+                ),
               ),
             ),
           ),
@@ -4222,6 +4229,56 @@ class _ZoomableRedactionCanvasState extends State<_ZoomableRedactionCanvas> {
 
   Offset _toCanvasPoint(Offset localPosition, Offset effectiveOffset) {
     return (localPosition - effectiveOffset) / _scale;
+  }
+
+  void _handlePointerSignal(PointerSignalEvent event, Offset effectiveOffset) {
+    if (event is! PointerScrollEvent) return;
+
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final zooming =
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+
+    if (zooming) {
+      widget.onFinishRedaction();
+      final scaleFactor = math.exp(-event.scrollDelta.dy * _pointerZoomStep);
+      _setScaleAround(
+        scale: _scale * scaleFactor,
+        focalPoint: event.localPosition,
+        currentOffset: effectiveOffset,
+        currentScale: _scale,
+      );
+      return;
+    }
+
+    if (_scale <= _minScale) return;
+
+    widget.onFinishRedaction();
+    setState(() {
+      _offset = _clampOffset(
+        effectiveOffset - event.scrollDelta,
+        _scale,
+        widget.canvasSize,
+      );
+    });
+  }
+
+  void _setScaleAround({
+    required double scale,
+    required Offset focalPoint,
+    required Offset currentOffset,
+    required double currentScale,
+  }) {
+    final nextScale = scale.clamp(_minScale, _maxScale).toDouble();
+    final focalCanvasPoint = (focalPoint - currentOffset) / currentScale;
+    final nextOffset = focalPoint - focalCanvasPoint * nextScale;
+
+    setState(() {
+      _scale = nextScale;
+      _offset = _clampOffset(nextOffset, nextScale, widget.canvasSize);
+    });
   }
 
   Offset _clampOffset(Offset offset, double scale, Size bounds) {
@@ -4333,7 +4390,7 @@ class _TopBar extends StatelessWidget {
             DecoratedBox(
               decoration: BoxDecoration(
                 color: redactKitGroupedFillColor,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: redactKitSubtleBorderColor),
               ),
               child: Padding(
@@ -4350,14 +4407,12 @@ class _TopBar extends StatelessWidget {
                               child: CupertinoActivityIndicator(radius: 9),
                             )
                           : const Icon(Icons.folder_open),
-                      emphasis: _ToolbarEmphasis.tonal,
                     ),
                     if (mode == _WorkspaceMode.redact)
                       _DesktopToolbarAction(
                         message: 'Photos',
                         onPressed: isOpening ? null : onOpenPhotos,
                         icon: const Icon(Icons.photo_library_outlined),
-                        emphasis: _ToolbarEmphasis.tonal,
                       ),
                     const _ToolbarDivider(),
                     _DesktopToolbarAction(
@@ -4391,7 +4446,7 @@ class _TopBar extends StatelessWidget {
                         icon: const Icon(
                           CupertinoIcons.photo_fill_on_rectangle_fill,
                         ),
-                        emphasis: _ToolbarEmphasis.filled,
+                        emphasis: _ToolbarEmphasis.tonal,
                       ),
                       _DesktopToolbarAction(
                         message: 'Share',
@@ -4434,7 +4489,7 @@ class _DesktopAppTitle extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             color: redactKitGroupedFillColor,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: redactKitSubtleBorderColor),
           ),
           child: const SizedBox.square(
@@ -4449,7 +4504,7 @@ class _DesktopAppTitle extends StatelessWidget {
         const SizedBox(width: 10),
         const Text(
           'Redact Kit',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
         ),
       ],
     );
@@ -4467,7 +4522,7 @@ class _DesktopStatusBadge extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: redactKitGroupedFillColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitSubtleBorderColor),
       ),
       child: Padding(
@@ -4479,7 +4534,7 @@ class _DesktopStatusBadge extends StatelessWidget {
           style: const TextStyle(
             color: redactKitMutedTextColor,
             fontSize: 13,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),
@@ -4567,15 +4622,8 @@ class _SidePanel extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitBorderColor),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x1F000000),
-            blurRadius: 36,
-            offset: Offset(0, 18),
-          ),
-        ],
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -4700,15 +4748,8 @@ class _PdfSidePanel extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: redactKitBorderColor),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x1F000000),
-            blurRadius: 36,
-            offset: Offset(0, 18),
-          ),
-        ],
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -4833,7 +4874,9 @@ class _PdfSidePanel extends StatelessWidget {
                     icon: state.isExporting
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: CupertinoActivityIndicator(),
+                            child: CupertinoActivityIndicator(
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.save_alt),
                     label: 'Save Redacted PDF',
@@ -4874,7 +4917,7 @@ class _InspectorSection extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -5014,11 +5057,11 @@ class _QualityPicker<T extends Object> extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   color: redactKitMutedTextColor,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
           ],
         ),
         const SizedBox(height: 10),
@@ -5061,18 +5104,18 @@ class _ReadOnlyQualityIndicator extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   color: redactKitMutedTextColor,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
           ],
         ),
         const SizedBox(height: 10),
         DecoratedBox(
           decoration: BoxDecoration(
             color: redactKitGroupedFillColor,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: redactKitBorderColor),
           ),
           child: const SizedBox(
@@ -5081,7 +5124,7 @@ class _ReadOnlyQualityIndicator extends StatelessWidget {
             child: Center(
               child: Text(
                 'Original',
-                style: TextStyle(fontWeight: FontWeight.w800),
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
           ),
@@ -5110,7 +5153,7 @@ class _PanelHeading extends StatelessWidget {
         style: const TextStyle(
           color: redactKitMutedTextColor,
           fontSize: 13,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -5134,11 +5177,11 @@ class _MetricRow extends StatelessWidget {
               label,
               style: const TextStyle(
                 color: redactKitMutedTextColor,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -5171,7 +5214,7 @@ class _ColorSwatchButton extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected ? redactKitAccentColor : redactKitBorderColor,
               width: selected ? 3 : 1,
@@ -5227,7 +5270,7 @@ class _KeepFilenamesToggle extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: enabled ? null : redactKitDisabledColor,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

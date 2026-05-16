@@ -28,7 +28,7 @@ void main() {
 
     final app = tester.widget<CupertinoApp>(find.byType(CupertinoApp));
     expect(app.theme?.primaryColor, redactKitAccentColor);
-    expect(redactKitAccentColor, const Color(0xFF2F6F73));
+    expect(redactKitAccentColor, const Color(0xFF494FDF));
     expect(app.theme?.scaffoldBackgroundColor, redactKitBackgroundColor);
   });
 
@@ -67,7 +67,10 @@ void main() {
 
     expect(find.text('Image Privacy'), findsOneWidget);
     expect(find.text('Pixel-level redaction'), findsOneWidget);
-    expect(find.textContaining('100% opaque solid pixels'), findsOneWidget);
+    expect(
+      find.textContaining('hidden content under the covered area'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byIcon(CupertinoIcons.xmark));
     await tester.pumpAndSettle();
