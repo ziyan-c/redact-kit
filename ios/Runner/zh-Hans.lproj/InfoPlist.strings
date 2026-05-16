@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "Redact Kit";
+"CFBundleName" = "Redact Kit";
+"NSPhotoLibraryAddUsageDescription" = "将清理后的遮盖图片保存到照片。";
+"NSPhotoLibraryUsageDescription" = "从照片中本地打开图片进行遮盖。";

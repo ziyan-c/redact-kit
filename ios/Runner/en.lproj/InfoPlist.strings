@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "Redact Kit";
+"CFBundleName" = "Redact Kit";
+"NSPhotoLibraryAddUsageDescription" = "Save clean redacted images to Photos.";
+"NSPhotoLibraryUsageDescription" = "Open photos locally for redaction.";
