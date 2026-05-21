@@ -1172,6 +1172,12 @@ class _TabletTopBar extends StatelessWidget {
               ),
             ],
           ],
+          if (onSettings != null)
+            _TopBarIconButton(
+              tooltip: context.l10n.settings,
+              onPressed: onSettings,
+              icon: const Icon(CupertinoIcons.slider_horizontal_3),
+            ),
           _TopBarIconButton(
             tooltip: switch (mode) {
               _WorkspaceMode.redact => context.l10n.imageDetails,
@@ -1181,12 +1187,6 @@ class _TabletTopBar extends StatelessWidget {
             onPressed: onHelp,
             icon: const Icon(CupertinoIcons.info),
           ),
-          if (onSettings != null)
-            _TopBarIconButton(
-              tooltip: context.l10n.settings,
-              onPressed: onSettings,
-              icon: const Icon(CupertinoIcons.slider_horizontal_3),
-            ),
         ],
       ),
     );
@@ -1853,14 +1853,6 @@ class _MobileTopBar extends StatelessWidget {
               ],
             ),
           ),
-          _CupertinoTooltip(
-            message: context.l10n.details,
-            child: _CupertinoIconControl(
-              onPressed: onHelp,
-              icon: const Icon(CupertinoIcons.info),
-              emphasis: _CupertinoControlEmphasis.outlined,
-            ),
-          ),
           if (onSettings != null)
             _CupertinoTooltip(
               message: context.l10n.settings,
@@ -1870,6 +1862,14 @@ class _MobileTopBar extends StatelessWidget {
                 emphasis: _CupertinoControlEmphasis.outlined,
               ),
             ),
+          _CupertinoTooltip(
+            message: context.l10n.details,
+            child: _CupertinoIconControl(
+              onPressed: onHelp,
+              icon: const Icon(CupertinoIcons.info),
+              emphasis: _CupertinoControlEmphasis.outlined,
+            ),
+          ),
         ],
       ),
     );
