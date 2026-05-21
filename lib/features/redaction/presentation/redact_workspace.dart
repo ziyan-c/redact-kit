@@ -4281,16 +4281,22 @@ class _CanvasArea extends ConsumerWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
-          final imageRect = _fitImageRect(image, size);
           final cropRect = this.cropRect;
           final onCropChanged = this.onCropChanged;
           final onCancelCrop = this.onCancelCrop;
           final onApplyCrop = this.onApplyCrop;
-
-          if (cropRect != null &&
+          final hasCropControls =
+              cropRect != null &&
               onCropChanged != null &&
               onCancelCrop != null &&
-              onApplyCrop != null) {
+              onApplyCrop != null;
+          final imageRect = _fitImageRect(
+            image,
+            size,
+            bottomReserved: hasCropControls ? _cropActionReservedHeight : 0,
+          );
+
+          if (hasCropControls) {
             return _CropCanvas(
               state: state,
               image: image,
@@ -4331,10 +4337,16 @@ class _CanvasArea extends ConsumerWidget {
     );
   }
 
-  Rect _fitImageRect(ui.Image image, Size bounds) {
+  static const double _cropActionReservedHeight = 92;
+
+  Rect _fitImageRect(ui.Image image, Size bounds, {double bottomReserved = 0}) {
+    final reservedHeight = bottomReserved
+        .clamp(0.0, math.max(0.0, bounds.height * 0.28))
+        .toDouble();
+    final fittingHeight = math.max(1.0, bounds.height - reservedHeight);
     final available = Size(
       math.max(1, bounds.width - fitPadding * 2),
-      math.max(1, bounds.height - fitPadding * 2),
+      math.max(1, fittingHeight - fitPadding * 2),
     );
     final scale = math.min(
       available.width / image.width,
@@ -4344,7 +4356,7 @@ class _CanvasArea extends ConsumerWidget {
 
     return Rect.fromLTWH(
       (bounds.width - fitted.width) / 2,
-      (bounds.height - fitted.height) / 2,
+      (fittingHeight - fitted.height) / 2,
       fitted.width,
       fitted.height,
     );
